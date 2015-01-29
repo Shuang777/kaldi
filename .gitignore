@@ -476,6 +476,7 @@
 /src/nnetbin/nnet-train-mpe-sequential
 /src/nnetbin/nnet-train-perutt
 /src/nnetbin/transf-to-nnet
+/src/nnetbin/paste-post
 
 # /src/nnet2/
 /src/nnet2/.depend.mk
