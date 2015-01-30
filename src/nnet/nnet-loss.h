@@ -42,6 +42,9 @@ class Xent {
   /// Evaluate cross entropy from posteriors
   void Eval(const CuMatrixBase<BaseFloat> &net_out, const Posterior &target,
             CuMatrix<BaseFloat> *diff);
+  /// Evaluate cross entropy from posteriors
+  void Eval(const std::vector<CuMatrixBase<BaseFloat> *> &net_outs, const Posterior &target,
+            const std::vector<int32> &subnnet_ids, std::vector<CuMatrix<BaseFloat> *> &diffs);
   /// Evaluate cross entropy from soft labels
   void EvalVec(const CuMatrixBase<BaseFloat> &net_out, const std::vector<int32> &target,
             CuMatrix<BaseFloat> *diff);
@@ -67,6 +70,8 @@ class Xent {
   CuVector<BaseFloat> log_post_tgt_;
   Vector<BaseFloat>   log_post_tgt_host_;
   CuMatrix<BaseFloat> tgt_mat_device_;
+  std::vector<CuMatrix<BaseFloat> > tgt_mats_device_;
+  std::vector<CuVector<BaseFloat> > subnnet_mask_device_;
   CuMatrix<BaseFloat> xentropy_aux_;
 
   // frame classification buffers 
@@ -94,7 +99,7 @@ class Mse {
   std::string Report();
 
  private:
-  int64 frames_;
+  int32 frames_;
   double loss_;
   
   int32 frames_progress_;

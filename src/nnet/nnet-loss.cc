@@ -140,6 +140,105 @@ void Xent::Eval(const CuMatrixBase<BaseFloat>& net_out, const Posterior& post, C
   }
 }
 
+void Xent::Eval(const std::vector<CuMatrixBase<BaseFloat> *> &net_outs, const Posterior& post, 
+                const std::vector<int32> &subnnet_ids, std::vector<CuMatrix<BaseFloat>* > &diffs) {
+  const int32 num_frames = net_outs.front()->NumRows(),
+              num_subnnets = net_outs.size();
+  KALDI_ASSERT(num_frames == post.size());
+
+  // convert posterior to matrix
+  std::vector<Matrix<BaseFloat> > tgt_mats_host(num_subnnets);
+  std::vector<Vector<BaseFloat> > subnnet_mask_host(num_subnnets);
+  for (int32 i = 0; i < num_subnnets; i++) {
+    tgt_mats_host[i].Resize(num_frames, net_outs[i]->NumCols(), kSetZero);
+    subnnet_mask_host[i].Resize(num_frames, kSetZero);
+  }
+  for (int32 t = 0; t < post.size(); t++) {
+    int32 subnnet_id = subnnet_ids[t];
+    int32 num_pdf = net_outs[subnnet_id]->NumCols();
+    subnnet_mask_host[subnnet_id](t) = 1.0;
+    for (int32 i = 0; i < post[t].size(); i++) {
+      int32 pdf = post[t][i].first;
+      if (pdf >= num_pdf) {
+        KALDI_ERR << "Posterior pdf-id out of NN-output dimension, please check number of pdfs by 'hmm-info'."
+                  << " nn-outputs : " << num_pdf << ", posterior pdf-id : " << pdf;
+      }
+      tgt_mats_host[subnnet_id](t, pdf) += post[t][i].second;
+    }
+  }
+  tgt_mats_device_.resize(num_subnnets);
+  subnnet_mask_device_.resize(num_subnnets);
+  for (int32 i = 0; i < num_subnnets; i++) {
+    tgt_mats_device_[i] = tgt_mats_host[i]; // -> GPU
+    subnnet_mask_device_[i] = subnnet_mask_host[i];
+  }
+
+  // compute derivaitve w.r.t. pre-softmax activation (net_out - tgt)
+  KALDI_ASSERT(num_subnnets == diffs.size());
+  for (int32 i = 0; i < num_subnnets; i++) {
+    *diffs[i] = *net_outs[i];
+    diffs[i]->AddMat(-1.0, tgt_mats_device_[i]);
+    diffs[i]->MulRowsVec(subnnet_mask_device_[i]);
+  }
+
+  // evaluate the frame-level classification
+  int32 correct=0;
+  double cross_entropy = 0;
+  for (int i = 0; i < num_subnnets; i++) {
+    net_outs[i]->FindRowMaxId(&max_id_out_); // find max in nn-output
+    tgt_mats_device_[i].FindRowMaxId(&max_id_tgt_); // find max in targets
+    max_id_out_host_.resize(num_frames);
+    max_id_tgt_host_.resize(num_frames);
+    max_id_out_.CopyToVec(&max_id_out_host_);
+    max_id_tgt_.CopyToVec(&max_id_tgt_host_);
+    // count frames where maxima match
+    for(int32 t=0; t<num_frames; t++) {
+      if (subnnet_ids[t] == i && max_id_tgt_host_[t] == max_id_out_host_[t]) correct++;
+    }
+
+   // calculate cross_entropy (in GPU)
+    xentropy_aux_ = *net_outs[i]; // y
+    xentropy_aux_.Add(1e-20); // avoid -inf
+    xentropy_aux_.ApplyLog(); // log(y)
+    xentropy_aux_.MulElements(tgt_mats_device_[i]); // t*log(y)
+    xentropy_aux_.MulRowsVec(subnnet_mask_device_[i]); // mask it;
+    cross_entropy -= xentropy_aux_.Sum(); // sum the matrix
+  }
+
+   // calculate entropy (from Posterior)
+  double entropy = 0.0;
+  for (int32 t = 0; t < post.size(); t++) {
+    for (int32 i = 0; i < post[t].size(); i++) {
+      BaseFloat p = post[t][i].second;
+      entropy += -p*log(p);
+    }
+  }
+  
+  // accumulate
+  loss_ += cross_entropy;
+  entropy_ += entropy;
+  correct_ += correct;
+  frames_ += num_frames;
+
+  // progressive loss reporting
+  {
+    static const int32 progress_step = 3600*100; // 1h
+    frames_progress_ += num_frames;
+    loss_progress_ += cross_entropy;
+    entropy_progress_ += entropy;
+    if (frames_progress_ > progress_step) {
+      KALDI_VLOG(1) << "ProgressLoss[" << frames_progress_/100/3600 << "h/" << frames_/100/3600 << "h]: " 
+                    << (loss_progress_-entropy_progress_)/frames_progress_ << " (Xent)";
+      // store
+      loss_vec_.push_back((loss_progress_-entropy_progress_)/frames_progress_);
+      // reset
+      frames_progress_ = 0;
+      loss_progress_ = 0.0;
+      entropy_progress_ = 0.0;
+    }
+  }
+}
+
 std::string Xent::Report() {
   std::ostringstream oss;
   oss << "AvgLoss: " << (loss_-entropy_)/frames_ << " (Xent), "

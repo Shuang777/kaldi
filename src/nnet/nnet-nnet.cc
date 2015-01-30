@@ -117,6 +117,43 @@ void Nnet::Backpropagate(const CuMatrixBase<BaseFloat> &out_diff, CuMatrix<BaseF
 }
 
 
+void Nnet::Backpropagate(const CuMatrixBase<BaseFloat> &out_diff, CuMatrix<BaseFloat> *in_diff, const CuVector<BaseFloat> &frm_weights, const int32 semi_layers) {
+
+  //////////////////////////////////////
+  // Backpropagation
+  //
+
+  // 0 layers6
+  if (NumComponents() == 0) { (*in_diff) = out_diff; return; }
+
+  KALDI_ASSERT((int32)propagate_buf_.size() == NumComponents()+1);
+  KALDI_ASSERT((int32)backpropagate_buf_.size() == NumComponents()+1);
+
+  // copy out_diff to last buffer
+  backpropagate_buf_[NumComponents()] = out_diff;
+  // backpropagate using buffers
+  for (int32 i = NumComponents()-1; i >= 0; i--) {
+    components_[i]->Backpropagate(propagate_buf_[i], propagate_buf_[i+1],
+                            backpropagate_buf_[i+1], &backpropagate_buf_[i]);
+    if (components_[i]->IsUpdatable()) {
+      UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(components_[i]);
+      if (i >= semi_layers-1) {    // gradient reweight for semi data
+        backpropagate_buf_[i+1].MulRowsVec(frm_weights);
+        BaseFloat sum = frm_weights.Sum();
+        BaseFloat num_frames = frm_weights.Dim();
+        backpropagate_buf_[i+1].Scale(num_frames/sum);
+      }
+      uc->Update(propagate_buf_[i], backpropagate_buf_[i+1]);
+    }
+  }
+  // eventually export the derivative
+  if (NULL != in_diff) (*in_diff) = backpropagate_buf_[0];
+
+  //
+  // End of Backpropagation
+  //////////////////////////////////////
+}
+
 void Nnet::Feedforward(const CuMatrixBase<BaseFloat> &in, CuMatrix<BaseFloat> *out) {
   KALDI_ASSERT(NULL != out);
 
