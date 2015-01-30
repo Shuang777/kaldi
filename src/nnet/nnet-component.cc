@@ -209,11 +209,11 @@ Component* Component::Read(std::istream &is, bool binary) {
 
   ReadToken(is, binary, &token);
   // Skip optional initial token
-  if(token == "<Nnet>") {
+  if(token == "<Nnet>" || token == "<SharedComponents>") {
     ReadToken(is, binary, &token); // Next token is a Component
   }
   // Finish reading when optional terminal token appears
-  if(token == "</Nnet>") {
+  if(token == "</Nnet>" || token == "</SharedComponents>" || token == "</SubNnetComponents>" || token == "</InSubNnetComponents>") {
     return NULL;
   }
 

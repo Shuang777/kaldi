@@ -46,6 +46,8 @@ class Nnet {
   void Propagate(const CuMatrixBase<BaseFloat> &in, CuMatrix<BaseFloat> *out); 
   /// Perform backward pass through the network
   void Backpropagate(const CuMatrixBase<BaseFloat> &out_diff, CuMatrix<BaseFloat> *in_diff);
+  /// Perform backward pass through the network with semidata gradient cutoff
+  void Backpropagate(const CuMatrixBase<BaseFloat> &out_diff, CuMatrix<BaseFloat> *in_diff, const CuVector<BaseFloat> &frm_weights, const int32 semi_layers);
   /// Perform forward pass through the network, don't keep buffers (use it when not training)
   void Feedforward(const CuMatrixBase<BaseFloat> &in, CuMatrix<BaseFloat> *out); 
 
