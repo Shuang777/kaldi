@@ -149,7 +149,6 @@ $train_cmd $graph_dir/mkgraph.log \
 steps/decode_fmllr.sh --nj 30 --cmd "$decode_cmd" --config conf/decode.config \
    $graph_dir data/test exp/tri4b/decode_test${lm_suffix}
 
-run
 
 # MMI training starting from the LDA+MLLT+SAT systems on both the 
 steps/align_fmllr.sh --nj 50 --cmd "$train_cmd" \
@@ -167,14 +166,16 @@ steps/train_mmi.sh --cmd "$decode_cmd" --boost 0.1 --num-iters $num_mmi_iters \
   data/train data/lang exp/tri4b_{ali,denlats} \
   exp/tri4b_mmi_b0.1
 
+run
+
 for iter in 1 2 3 4; do
-  for lm_suffix in "test" "test_pr"; do
+  for lm_suffix in "" "_pr"; do
     (
-      graph_dir=exp/tri4b/graph_${lm_suffix}
-      decode_dir=exp/tri4b_mmi_b0.1/decode_${iter}.mdl_${lm_suffix}
+      graph_dir=exp/tri4b/graph${lm_suffix}
+      decode_dir=exp/tri4b_mmi_b0.1/decode_${iter}.mdl_test${lm_suffix}
       steps/decode.sh --nj 8 --cmd "$decode_cmd" \
         --config conf/decode.config --iter $iter \
-        --transform-dir exp/tri4b/decode_${lm_suffix} \
+        --transform-dir exp/tri4b/decode_test${lm_suffix} \
         $graph_dir data/test $decode_dir
     ) &
   done
