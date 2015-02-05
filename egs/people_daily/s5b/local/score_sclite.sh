@@ -1,5 +1,7 @@
 #!/bin/bash
 # Copyright Johns Hopkins University (Author: Daniel Povey) 2012.  Apache 2.0.
+{
+set -e
 
 # begin configuration section.
 cmd=run.pl
@@ -29,9 +31,8 @@ dir=$3
 
 model=$dir/../final.mdl # assume model one level up from decoding dir.
 
-hubscr=$KALDI_ROOT/tools/sctk/bin/hubscr.pl 
-[ ! -f $hubscr ] && echo "Cannot find scoring program at $hubscr" && exit 1;
-hubdir=`dirname $hubscr`
+ScoringProgram=`which sclite` || ScoringProgram=$KALDI_ROOT/tools/sctk/bin/sclite
+[ ! -x $ScoringProgram ] && echo "Cannot find scoring program at $ScoringProgram" && exit 1;
 
 for f in $data/stm $data/glm $lang/words.txt $lang/phones/word_boundary.int \
      $model $data/segments $data/reco2file_and_channel $dir/lat.1.gz; do
@@ -83,29 +84,16 @@ if [ $stage -le 1 ]; then
 fi
 
 # Score the set...
+name=`basename $data`
 if [ $stage -le 2 ]; then  
   $cmd LMWT=$min_lmwt:$max_lmwt $dir/scoring/log/score.LMWT.log \
     cp $data/stm $dir/score_LMWT/ '&&' \
-    $hubscr -p $hubdir -V -l english -h hub5 -g $data/glm -r $dir/score_LMWT/stm $dir/score_LMWT/${name}.ctm || exit 1;
+    $ScoringProgram -s -r $dir/score_LMWT/stm stm -h $dir/score_LMWT/${name}.ctm ctm \
+      -n "$name.ctm" -f 0 -D -F  -o  sum rsum prf dtl sgml -e utf-8 '&&' \
+    $ScoringProgram -s -r $dir/score_LMWT/stm stm -h $dir/score_LMWT/${name}.ctm ctm \
+      -n "$name.char.ctm" -f 0 -D -F  -o  sum rsum prf dtl sgml -e utf-8 -c NOASCII DH
 fi
 
-# For eval2000 score the subsets
-case "$name" in eval2000* )
-  # Score only the, swbd part...
-  if [ $stage -le 3 ]; then  
-    $cmd LMWT=$min_lmwt:$max_lmwt $dir/scoring/log/score.swbd.LMWT.log \
-      grep -v '^en_' $data/stm '>' $dir/score_LMWT/stm.swbd '&&' \
-      grep -v '^en_' $dir/score_LMWT/${name}.ctm '>' $dir/score_LMWT/${name}.ctm.swbd '&&' \
-      $hubscr -p $hubdir -V -l english -h hub5 -g $data/glm -r $dir/score_LMWT/stm.swbd $dir/score_LMWT/${name}.ctm.swbd || exit 1;
-  fi
-  # Score only the, callhome part...
-  if [ $stage -le 3 ]; then  
-    $cmd LMWT=$min_lmwt:$max_lmwt $dir/scoring/log/score.callhm.LMWT.log \
-      grep -v '^sw_' $data/stm '>' $dir/score_LMWT/stm.callhm '&&' \
-      grep -v '^sw_' $dir/score_LMWT/${name}.ctm '>' $dir/score_LMWT/${name}.ctm.callhm '&&' \
-      $hubscr -p $hubdir -V -l english -h hub5 -g $data/glm -r $dir/score_LMWT/stm.callhm $dir/score_LMWT/${name}.ctm.callhm || exit 1;
-  fi
- ;;
-esac
 
 exit 0
+}

@@ -32,26 +32,27 @@ stage=0 # resume training with --stage=N
 if [ $stage -le 0 ]; then
   # Pre-train DBN, i.e. a stack of RBMs
   dir=exp/dnn5b_pretrain-dbn
-  (tail --pid=$$ -F $dir/log/pretrain_dbn.log 2>/dev/null)& # forward log
   $cuda_cmd $dir/log/pretrain_dbn.log \
     mysteps/pretrain_dbn.sh --rbm-iter 1 $traindata ${gmmdir}_ali $dir
 fi
 
+dir=exp/dnn5b_pretrain-dbn_dnn
 if [ $stage -le 1 ]; then
   # Train the DNN optimizing per-frame cross-entropy.
-  dir=exp/dnn5b_pretrain-dbn_dnn
   ali=${gmmdir}_ali
   feature_transform=exp/dnn5b_pretrain-dbn/final.feature_transform
   dbn=exp/dnn5b_pretrain-dbn/6.dbn
-  (tail --pid=$$ -F $dir/log/train_nnet.log 2>/dev/null)& # forward log
   # Train
   $cuda_cmd $dir/log/train_nnet.log \
-    mysteps/nnet/train.sh --feature-transform $feature_transform --dbn $dbn --hid-layers 0 --learn-rate 0.008 \
+    mysteps/train_nnet.sh --feature-transform $feature_transform --dbn $dbn --hid-layers 0 --learn-rate 0.008 \
     $traindata data/lang $ali $dir
+fi
+
+if [ $stage -le 2 ]; then
   # Decode (reuse HCLG graph)
-  steps/nnet/decode.sh --nj 8 --cmd "$decode_cmd" --config conf/decode_dnn.config --acwt 0.08333 \
+  mysteps/decode_nnet.sh --nj 8 --cmd "$decode_cmd" --config conf/decode_dnn.config --acwt 0.08333 \
     --transform-dir exp/tri4b/decode_test \
-    $gmmdir/graph_test_pr data/test $dir/decode_test_pr
+    $gmmdir/graph_pr data/test $dir/decode_test_pr
   # Rescore using unpruned trigram sw1_fsh
   steps/lmrescore.sh --mode 3 --cmd "$mkgraph_cmd" data/lang_test_pr data/lang_test data/test \
     $dir/decode_test_pr $dir/decode_test.3

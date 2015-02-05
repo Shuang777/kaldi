@@ -1,5 +1,9 @@
 #!/bin/bash
 # Copyright Johns Hopkins University (Author: Daniel Povey) 2012.  Apache 2.0.
+{
+set -e
+
+echo "$0 $@"
 
 orig_args=
 for x in "$@"; do orig_args="$orig_args '$x'"; done
@@ -10,8 +14,8 @@ for x in "$@"; do orig_args="$orig_args '$x'"; done
 # way pass things through to the scripts that this script calls.
 cmd=run.pl
 stage=0
-min_lmwt=16
-max_lmwt=25
+min_lmwt=12
+max_lmwt=24
 reverse=false
 #end configuration section.
 
@@ -38,3 +42,4 @@ else
   echo "$data/stm does not exist: using local/score_basic.sh"
   eval local/score_basic.sh $orig_args
 fi
+}
