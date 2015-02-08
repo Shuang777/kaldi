@@ -123,7 +123,7 @@ case $feat_type in
    ;;
   lda) 
     splice_opts=`cat $alidir/splice_opts 2>/dev/null`
-    cp $alidir/{splice_opts,cmvn_opts,final.mat} $dir || exit 1;
+    cp $transform_dir/{splice_opts,cmvn_opts,final.mat} $dir || exit 1;
     [ ! -z "$cmvn_opts" ] && \
        echo "You cannot supply --cmvn-opts option if feature type is LDA." && exit 1;
     cmvn_opts=$(cat $dir/cmvn_opts)
