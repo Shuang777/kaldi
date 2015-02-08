@@ -110,12 +110,14 @@ int main(int argc, char *argv[]) {
 
     ParseOptions po(usage);
     bool compute_objf_change = true;
+    bool derived_in = false;
     IvectorExtractorStatsOptions stats_opts;
     TaskSequencerConfig sequencer_config;
     po.Register("compute-objf-change", &compute_objf_change,
                 "If true, compute the change in objective function from using "
                 "nonzero iVector (a potentially useful diagnostic).  Combine "
                 "with --verbose=2 for per-utterance information");
+    po.Register("derived-in", &derived_in, "Read extractor with derived vars (default = false)");
     stats_opts.Register(&po);
     sequencer_config.Register(&po);
     
@@ -135,7 +137,11 @@ int main(int argc, char *argv[]) {
     // extractor.
     g_num_threads = sequencer_config.num_threads; 
     IvectorExtractor extractor;
-    ReadKaldiObject(ivector_extractor_rxfilename, &extractor);
+    {
+      bool binary_in;
+      Input ki(ivector_extractor_rxfilename, &binary_in);
+      extractor.Read(ki.Stream(), binary_in, derived_in);
+    }
 
     double tot_auxf_change = 0.0;
     int64 tot_t = 0;
