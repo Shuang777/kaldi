@@ -90,8 +90,6 @@ class IvectorExtractorUtteranceStats {
   
   void Scale(double scale); // Used to apply acoustic scale.
 
-  double NumFrames() { return gamma_.Sum(); }
-  
  protected:
   friend class IvectorExtractor;
   friend class IvectorExtractorStats;
@@ -241,8 +239,8 @@ class IvectorExtractor {
   int32 NumGauss() const;
   bool IvectorDependentWeights() const { return w_.NumRows() != 0; }
   
-  void Write(std::ostream &os, bool binary) const;
-  void Read(std::istream &is, bool binary);
+  void Write(std::ostream &os, bool binary, const bool write_derived = false) const;
+  void Read(std::istream &is, bool binary, const bool read_derived = false);
 
   // Note: we allow the default assignment and copy operators
   // because they do what we want.
@@ -347,7 +345,7 @@ class OnlineIvectorEstimationStats {
 
   double PriorOffset() const { return prior_offset_; }
 
-  /// ObjfChange returns the change in objective function *per frame* from
+  /// ObjfChange returns the change in objective function per frame from
   /// using the default value [ prior_offset_, 0, 0, ... ] to
   /// using the provided value; should be >= 0, if "ivector" is
   /// a value we estimated.  This is for diagnostics.
@@ -359,9 +357,6 @@ class OnlineIvectorEstimationStats {
   /// as if we had fewer frames of adaptation data.  Note: it does not
   /// apply the scaling to the prior term.
   void Scale(double scale);
-
-  void Write(std::ostream &os, bool binary) const;
-  void Read(std::istream &is, bool binary);
 
   // Use the default assignment operator
  protected:

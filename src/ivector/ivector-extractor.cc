@@ -16,7 +16,7 @@
 // limitations under the License.
 
 #include <vector>
-
+#include "base/timer.h"
 #include "ivector/ivector-extractor.h"
 #include "thread/kaldi-task-sequence.h"
 
@@ -644,7 +644,7 @@ void OnlineIvectorEstimationStats::GetIvector(
     ivector->SetZero();
     (*ivector)(0) = prior_offset_;
   }
-  KALDI_VLOG(4) << "Objective function improvement from estimating the "
+  KALDI_VLOG(3) << "Objective function improvement from estimating the "
                 << "iVector (vs. default value) is "
                 << ObjfChange(*ivector);
 }
@@ -698,7 +698,7 @@ OnlineIvectorEstimationStats::OnlineIvectorEstimationStats(
     
 
 
-void IvectorExtractor::Write(std::ostream &os, bool binary) const {
+void IvectorExtractor::Write(std::ostream &os, bool binary, const bool write_derived /* = false */) const {
   WriteToken(os, binary, "<IvectorExtractor>");
   WriteToken(os, binary, "<w>");
   w_.Write(os, binary);
@@ -715,11 +715,23 @@ void IvectorExtractor::Write(std::ostream &os, bool binary) const {
     Sigma_inv_[i].Write(os, binary);
   WriteToken(os, binary, "<IvectorOffset>");
   WriteBasicType(os, binary, prior_offset_);
+  if (write_derived) {
+    WriteToken(os, binary, "<gconsts>");
+    gconsts_.Write(os, binary);
+    WriteToken(os, binary, "<U>");
+    U_.Write(os, binary);
+    WriteToken(os, binary, "<SigInvM>");
+    for (int32 i = 0; i < size; i++) {
+      Sigma_inv_M_[i].Write(os, binary);
+    }
+  }
   WriteToken(os, binary, "</IvectorExtractor>");
 }
 
 
-void IvectorExtractor::Read(std::istream &is, bool binary) {
+void IvectorExtractor::Read(std::istream &is, bool binary, const bool read_derived /* = false */) {
+  Timer timer;
+
   ExpectToken(is, binary, "<IvectorExtractor>");
   ExpectToken(is, binary, "<w>");
   w_.Read(is, binary);
@@ -738,8 +750,24 @@ void IvectorExtractor::Read(std::istream &is, bool binary) {
     Sigma_inv_[i].Read(is, binary);
   ExpectToken(is, binary, "<IvectorOffset>");
   ReadBasicType(is, binary, &prior_offset_);
+  if (read_derived) {
+    ExpectToken(is, binary, "<gconsts>");
+    gconsts_.Read(is, binary);
+    ExpectToken(is, binary, "<U>");
+    U_.Read(is, binary);
+    ExpectToken(is, binary, "<SigInvM>");
+    Sigma_inv_M_.resize(size);
+    for (int32 i = 0; i < size; i++) {
+      Sigma_inv_M_[i].Read(is, binary);
+    }
+  }
+  KALDI_LOG << "Time elapsed: " << timer.Elapsed() << "for reading" << endl;
+  timer.Reset();
   ExpectToken(is, binary, "</IvectorExtractor>");
-  ComputeDerivedVars();
+  if (!read_derived) {
+    ComputeDerivedVars();
+  }
+  KALDI_LOG << "Time elapsed: " << timer.Elapsed() << "for computing" << endl;
 }
 
 

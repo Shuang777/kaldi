@@ -225,6 +225,8 @@ int main(int argc, char *argv[]) {
     bool compute_objf_change = true;
     IvectorEstimationOptions opts;
     std::string spk2utt_rspecifier;
+    bool derived_in = false;
+    IvectorExtractorStatsOptions stats_opts;
     TaskSequencerConfig sequencer_config;
     po.Register("compute-objf-change", &compute_objf_change,
                 "If true, compute the change in objective function from using "
@@ -238,6 +240,8 @@ int main(int argc, char *argv[]) {
                 "option.");
     
     opts.Register(&po);
+    po.Register("derived-in", &derived_in, "Read extractor with derived vars (default = false)");
+    stats_opts.Register(&po);
     sequencer_config.Register(&po);
     
     po.Read(argc, argv);
@@ -252,6 +256,15 @@ int main(int argc, char *argv[]) {
         posterior_rspecifier = po.GetArg(3),
         ivectors_wspecifier = po.GetArg(4);
 
+    // g_num_threads affects how ComputeDerivedVars is called when we read the
+    // extractor.
+    g_num_threads = sequencer_config.num_threads; 
+    IvectorExtractor extractor;
+    {
+      bool binary_in;
+      Input ki(ivector_extractor_rxfilename, &binary_in);
+      extractor.Read(ki.Stream(), binary_in, derived_in);
+    }
 
     if (spk2utt_rspecifier.empty()) {
       // g_num_threads affects how ComputeDerivedVars is called when we read the
