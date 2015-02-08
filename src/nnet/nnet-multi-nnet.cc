@@ -883,19 +883,25 @@ std::string MultiNnet::Info() const {
   // global info
   std::ostringstream ostr;
   ostr << "num-in-subnnets " << NumInSubNnets() << std::endl;
-  std::vector<int32> input_dims = InputDims();
-  for(int32 i=0; i<input_dims.size(); i++) {
-    ostr << "in subnnet " << i+1 << " input-dim " << input_dims[i] << std::endl;
+  if (NumInSubNnets() != 0) {
+    std::vector<int32> input_dims = InputDims();
+    for(int32 i=0; i<input_dims.size(); i++) {
+      ostr << "in subnnet " << i+1 << " input-dim " << input_dims[i] << std::endl;
+    }
   }
 
   ostr << "num-shared-components " << NumSharedComponents() << std::endl;
-  ostr << "input-dim " << SharedInputDims() << std::endl;
-  ostr << "output-dim " << SharedOutputDims() << std::endl;
+  if (NumSharedComponents() != 0) {
+    ostr << "input-dim " << SharedInputDims() << std::endl;
+    ostr << "output-dim " << SharedOutputDims() << std::endl;
+  }
   
   ostr << "num-subnnets " << NumSubNnets() << std::endl;
-  std::vector<int32> output_dims = OutputDims();
-  for(int32 i=0; i<output_dims.size(); i++) {
-    ostr << "subnnet " << i+1 << " output-dim " << output_dims[i] << std::endl;
+  if (NumSubNnets() != 0) {
+    std::vector<int32> output_dims = OutputDims();
+    for(int32 i=0; i<output_dims.size(); i++) {
+      ostr << "subnnet " << i+1 << " output-dim " << output_dims[i] << std::endl;
+    }
   }
   ostr << "number-of-parameters " << static_cast<float>(NumParams())/1e6 
        << " millions" << std::endl;
