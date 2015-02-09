@@ -1,0 +1,72 @@
+# BNF training parameters
+bnf_num_hidden_layers=6
+bottleneck_dim=42
+bnf_hidden_layer_dim=2048
+bnf_minibatch_size=512
+bnf_init_learning_rate=0.008
+bnf_final_learning_rate=0.0008
+bnf_max_change=40
+bnf_num_jobs=4
+bnf_num_threads=1
+bnf_mixup=10000
+bnf_mpe_learning_rate=0.00009
+bnf_mpe_last_layer_factor=0.1
+bnf_num_gauss_ubm=550 # use fewer UBM Gaussians than the
+                      # non-bottleneck system (which has 800)
+bnf_num_gauss_sgmm=50000 # use fewer SGMM sub-states than the
+                         # non-bottleneck system (which has 80000).
+bnf_decode_acwt=0.05
+
+## DNN hybrid system training parameters
+dnn_num_hidden_layers=4
+dnn_mixup=12000
+dnn_mem_reqs="mem_free=2.0G,ram_free=0.5G"
+dnn_extra_opts="--num_epochs 20 --num-epochs-extra 10 --add-layers-period 1 --shrink-interval 3"
+
+dnn_num_parameters=7000000
+dnn_initial_learning_rate=0.008
+dnn_final_learning_rate=0.0008
+dnn_num_epochs=15
+dnn_num_epochs_extra=5
+dnn_num_iters_final=10
+dnn_num_jobs=8
+
+dnn_hidden_layer_dim=2048
+pnorm_input_dim=4000
+pnorm_output_dim=400
+pnorm_init_learning_rate=0.008
+pnorm_final_learning_rate=0.0008
+
+dnn_mpe_learning_rate=0.00008
+dnn_mpe_last_layer_factor=0.1
+dnn_mpe_retroactive=true
+
+bnf_every_nth_frame=2 # take every 2nd frame.
+babel_type=full
+
+lmwt_plp_extra_opts=( --min-lmwt 8 --max-lmwt 12 )
+lmwt_bnf_extra_opts=( --min-lmwt 15 --max-lmwt 22 )
+lmwt_dnn_extra_opts=( --min-lmwt 10 --max-lmwt 15 )
+
+dnn_beam=16.0
+dnn_lat_beam=8.5
+
+icu_opt=(--use-icu true --icu-transform Any-Lower)
+
+decode_extra_opts=(--num-threads 4 --parallel-opts "-pe smp 4 -l mem_free=6G" --mem-req "-l mem_free=6G")
+convert_extra_opts=(--mem-req "-l mem_free=6G")
+sgmm_train_extra_opts=(--num-iters 25 --cmd "$train_cmd -l mem_free=3.0G")
+sgmm_group_extra_opts=(--group 3 --parallel-opts "-pe smp 3 -l mem_free=7G" --cmd "$train_cmd -l mem_free=3.0G") 
+sgmm_denlats_extra_opts=(--num-threads 4 --parallel-opts "-pe smp 4" --cmd "$train_cmd -l mem_free=2G")
+sgmm_mmi_extra_opts=(--cmd "$train_cmd -l mem_free=3.2G")
+dnn_train_extra_opts=(--num-threads 8 --parallel-opts "-pe smp 8")
+dnn_denlats_extra_opts=(--num-threads 4 --parallel-opts "-pe smp 4" --cmd "$train_cmd -l mem_free=2G")
+
+dnn_cpu_parallel_opts=(--minibatch-size 128 --max-change 10 --num-jobs-nnet 8 --num-threads 16 \
+                       --parallel-opts "-pe smp 16" --cmd "$train_cmd -l mem_free=2G")
+dnn_gpu_parallel_opts=(--minibatch-size 512 --max-change 40 --num-jobs-nnet 8 --num-threads 1 \
+                       --parallel-opts "-l gpu=1" --cmd "$train_cmd -l mem_free=2G")
+dnn_parallel_opts="-l gpu=1"
+dnn_gpu_mpe_parallel_opts=(--num-jobs-nnet 8 --num-threads 1 \
+                           --parallel-opts "-l gpu=1" --cmd "$train_cmd -l mem_free=2G")
+
