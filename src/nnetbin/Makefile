@@ -14,7 +14,11 @@ BINFILES = nnet-train-frmshuff \
         nnet-forward nnet-copy nnet-info nnet-concat \
         transf-to-nnet cmvn-to-nnet nnet-initialize \
         nnet-kl-hmm-acc nnet-kl-hmm-mat-to-component \
-	feat-to-post paste-post
+				multi-nnet-initialize multi-nnet-copy multi-nnet-info \
+				multi-nnet-to-nnet nnet-to-multi-nnet \
+				multi-nnet-add-subnnet multi-nnet-forward \
+				multi-nnet-train-frmshuff multi-nnet-split \
+				multi-nnet-add-subnnet-front
 
 OBJFILES =
 
