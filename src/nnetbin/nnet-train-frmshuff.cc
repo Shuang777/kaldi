@@ -58,6 +58,9 @@ int main(int argc, char *argv[]) {
 
     int32 length_tolerance = 5;
     po.Register("length-tolerance", &length_tolerance, "Allowed length difference of features/targets (frames)");
+
+    int32 semi_layers = -1;
+    po.Register("semi-layers", &semi_layers, "Layers to update for semi data (default is -1, means no semidata)");
     
     std::string frame_weights;
     po.Register("frame-weights", &frame_weights, "Per-frame weights to scale gradients (frame selection/weighting).");
@@ -245,6 +248,14 @@ int main(int argc, char *argv[]) {
         if (!crossvalidate) {
           // backpropagate
           nnet.Backpropagate(obj_diff, NULL);
+          if (semi_layers == -1) {
+            // re-scale the gradients
+            obj_diff.MulRowsVec(CuVector<BaseFloat>(frm_weights));
+            // backpropagate
+            nnet.Backpropagate(obj_diff, NULL);
+          } else {  // gradient cutoff for semidata, use weights to indicate semi or not
+            nnet.Backpropagate(obj_diff, NULL, CuVector<BaseFloat>(frm_weights), semi_layers);
+          }
         }
 
         // 1st minibatch : show what happens in network 
@@ -254,6 +265,9 @@ int main(int argc, char *argv[]) {
           if (!crossvalidate) {
             KALDI_VLOG(1) << nnet.InfoBackPropagate();
             KALDI_VLOG(1) << nnet.InfoGradient();
+          }
+          if (semi_layers != -1) {
+            KALDI_VLOG(1) << "Gradient cutoff for semidata layers = " << semi_layers << ".";
           }
         }
         
