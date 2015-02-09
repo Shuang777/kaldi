@@ -16,6 +16,8 @@ num_iters=4
 min_gaussian_weight=1.0e-04
 remove_low_count_gaussians=true # set this to false if you need #gauss to stay fixed.
 cleanup=true
+vad=true
+add_delta=true
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -50,9 +52,12 @@ data=$1
 srcdir=$2
 dir=$3
 
-for f in $data/feats.scp $data/vad.scp; do
-  [ ! -f $f ] && echo "No such file $f" && exit 1;
-done
+if [ ! -f $data/feats.scp ]; then
+  echo "$0: expecting file $data/feats.scp to exist" && exit 1
+fi
+if [ $vad == true ] && [ ! -f $data/vad.scp ]; then
+  echo "$0: expecting file $data/vad.scp to exist" && exit 1
+fi
 
 mkdir -p $dir/log
 echo $nj > $dir/num_jobs
@@ -66,8 +71,15 @@ if [ -f $srcdir/delta_opts ]; then
 fi
 
 ## Set up features.
-feats="ark,s,cs:add-deltas $delta_opts scp:$sdata/JOB/feats.scp ark:- | apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- | select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- | subsample-feats --n=$subsample ark:- ark:- |"
-
+feats="ark,s,cs:copy-feats scp:$sdata/JOB/feats.scp ark:- |"
+if [ $add_delta == true ]; then
+  feats=$feats" add-deltas $delta_opts ark:- ark:- |"
+fi
+feats=$feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+if [ $vad == true ]; then
+  feats=$feats" select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+fi
+feats=$feats" subsample-feats --n=$subsample ark:- ark:- |"
 
 if [ $stage -le -2 ]; then
   if [ -f $srcdir/final.dubm ]; then # diagonal-covariance in $srcdir

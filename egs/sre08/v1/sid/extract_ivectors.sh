@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Copyright     2013  Daniel Povey
-#               2014  David Snyder
 # Apache 2.0.
 
 # This script extracts iVectors for a set of utterances, given
@@ -15,6 +14,8 @@ num_gselect=20 # Gaussian-selection using diagonal model: number of Gaussians to
 min_post=0.025 # Minimum posterior to use (posteriors below this are pruned out)
 posterior_scale=1.0 # This scale helps to control for successve features being highly
                     # correlated.  E.g. try 0.1 or 0.3.
+vad=true
+add_delta=true
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -50,13 +51,19 @@ done
 # Set various variables.
 mkdir -p $dir/log
 sdata=$data/split$nj;
-utils/split_data.sh $data $nj || exit 1;
+utils/split_data.sh --per-utt $data $nj || exit 1;
 
 delta_opts=`cat $srcdir/delta_opts 2>/dev/null`
 
 ## Set up features.
-feats="ark,s,cs:add-deltas $delta_opts scp:$sdata/JOB/feats.scp ark:- | apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- | select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
-
+feats="ark,s,cs:copy-feats scp:$sdata/JOB/feats.scp ark:- |"
+if [ $add_delta == true ]; then
+  feats=$feats" add-deltas $delta_opts ark:- ark:- |"
+fi
+feats=$feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+if [ $vad == true ]; then
+  feats=$feats" select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+fi
 
 if [ $stage -le 0 ]; then
   echo "$0: extracting iVectors"

@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Copyright   2013  Daniel Povey
-#             2014  David Snyder
 # Apache 2.0.
 
 # This script trains the i-vector extractor.  Note: there are 3 separate levels
@@ -42,6 +41,8 @@ cleanup=true
 posterior_scale=1.0 # This scale helps to control for successve features being highly
                     # correlated.  E.g. try 0.1 or 0.3
 sum_accs_opt=
+vad=true
+add_delta=true
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -92,7 +93,15 @@ fi
 
 parallel_opts="-pe smp $[$num_threads*$num_processes]"
 ## Set up features.
-feats="ark,s,cs:add-deltas $delta_opts scp:$sdata/JOB/feats.scp ark:- | apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- | select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+feats="ark,s,cs:copy-feats scp:$sdata/JOB/feats.scp ark:- |"
+if [ $add_delta == true ]; then
+  feats=$feats" add-deltas $delta_opts ark:- ark:- |"
+fi
+feats=$feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+if [ $vad == true ]; then
+  feats=$feats" select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+fi
+feats=$feats" subsample-feats --n=$subsample ark:- ark:- |"
 
 # Initialize the i-vector extractor using the FGMM input
 if [ $stage -le -2 ]; then
@@ -140,20 +149,20 @@ while [ $x -lt $num_iters ]; do
     done
     wait
     [ -f $dir/.error ] && echo "Error accumulating stats on iteration $x" && exit 1;
-	accs=""
-	for j in $(seq $nj); do
-	  accs+="$dir/acc.$x.$j "
-	done
-	echo "Summing accs (pass $x)"
-	$cmd $sum_accs_opt $dir/log/sum_acc.$x.log \
-	  ivector-extractor-sum-accs $accs $dir/acc.$x || exit 1;
+    accs=""
+    for j in $(seq $nj); do
+      accs+="$dir/acc.$x.$j "
+    done
+    echo "Summing accs (pass $x)"
+    $cmd $sum_accs_opt $dir/log/sum_acc.$x.log \
+      ivector-extractor-sum-accs $accs $dir/acc.$x || exit 1;
     echo "Updating model (pass $x)"
     nt=$[$num_threads*$num_processes] # use the same number of threads that
                                       # each accumulation process uses, since we
                                       # can be sure the queue will support this many.
-	$cmd -pe smp $nt $dir/log/update.$x.log \
-	  ivector-extractor-est --num-threads=$nt $dir/$x.ie $dir/acc.$x $dir/$[$x+1].ie || exit 1;
-	rm $dir/acc.$x.*
+    $cmd -pe smp $nt $dir/log/update.$x.log \
+      ivector-extractor-est --num-threads=$nt $dir/$x.ie $dir/acc.$x $dir/$[$x+1].ie || exit 1;
+    rm $dir/acc.$x.*
     if $cleanup; then
       rm $dir/acc.$x
       # rm $dir/$x.ie
