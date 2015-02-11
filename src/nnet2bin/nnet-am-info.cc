@@ -36,14 +36,6 @@ int main(int argc, char *argv[]) {
         " nnet-am-info 1.nnet\n";
         
     ParseOptions po(usage);
-
-    bool print_learning_rates = false;
-
-    po.Register("print-learning-rates", &print_learning_rates,
-                "If true, instead of printing the normal info, print a "
-                "colon-separated list of the learning rates for each updatable "
-                "layer, suitable to give to nnet-am-copy as the argument to"
-                "--learning-rates.");
     
     po.Read(argc, argv);
 
@@ -63,19 +55,9 @@ int main(int argc, char *argv[]) {
       am_nnet.Read(ki.Stream(), binary_read);
     }
 
-    if (print_learning_rates) {
-      Vector<BaseFloat> learning_rates(am_nnet.GetNnet().NumUpdatableComponents());
-      am_nnet.GetNnet().GetLearningRates(&learning_rates);
-      int32 nc = learning_rates.Dim();
-      for (int32 i = 0; i < nc; i++)
-        std::cout << learning_rates(i) << (i < nc - 1 ? ":" : "");
-      std::cout << std::endl;
-      KALDI_LOG << "Printed learning-rate info for " << nnet_rxfilename;
-    } else {
-      std::cout << am_nnet.Info();
-      KALDI_LOG << "Printed info about " << nnet_rxfilename;
-    }
+    std::cout << am_nnet.Info();
     
+    KALDI_LOG << "Printed info about " << nnet_rxfilename;
   } catch(const std::exception &e) {
     std::cerr << e.what() << '\n';
     return -1;

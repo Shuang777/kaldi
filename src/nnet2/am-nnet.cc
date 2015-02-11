@@ -73,11 +73,6 @@ void AmNnet::Init(const Nnet &nnet) {
   }
 }
 
-void AmNnet::ResizeOutputLayer(int32 new_num_pdfs) {
-  nnet_.ResizeOutputLayer(new_num_pdfs);
-  priors_.Resize(new_num_pdfs);
-  priors_.Set(1.0 / new_num_pdfs);
-}
 
 } // namespace nnet2
 } // namespace kaldi

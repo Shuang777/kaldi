@@ -57,7 +57,6 @@ class NnetComputer {
   std::vector<CuMatrix<BaseFloat> > forward_data_;
   Nnet *nnet_to_update_; // May be NULL, if just want objective function
   // but no gradient info or SGD.
-  std::vector <ChunkInfo> chunk_info_;
 };
 
 NnetComputer::NnetComputer(const Nnet &nnet,
@@ -76,8 +75,6 @@ NnetComputer::NnetComputer(const Nnet &nnet,
        right_context = (pad ? nnet_.RightContext() : 0);
 
   int32 num_rows = left_context + input_feats.NumRows() + right_context;
-  nnet.ComputeChunkInfo(num_rows, 1, &chunk_info_);
-
   CuMatrix<BaseFloat> &input(forward_data_[0]);
   input.Resize(num_rows, dim);
   input.Range(left_context, input_feats.NumRows(),
@@ -96,7 +93,8 @@ void NnetComputer::Propagate() {
     const Component &component = nnet_.GetComponent(c);
     CuMatrix<BaseFloat> &input = forward_data_[c],
                      &output = forward_data_[c+1];
-    component.Propagate(chunk_info_[c], chunk_info_[c+1], input, &output);
+        
+    component.Propagate(input, 1, &output);
     const Component *prev_component = (c == 0 ? NULL : &(nnet_.GetComponent(c-1)));
     bool will_do_backprop = (nnet_to_update_ != NULL),
          keep_last_output = will_do_backprop &&
@@ -142,6 +140,7 @@ void NnetComputer::Backprop(CuMatrix<BaseFloat> *tmp_deriv) {
   // If later this reasoning changes, we can change this
   // statement and add logic to make component_to_update, below,
   // NULL if necessary.
+  int32 num_chunks = 1;
   
   for (int32 c = nnet_.NumComponents() - 1; c >= 0; c--) {
     const Component &component = nnet_.GetComponent(c);
@@ -150,7 +149,7 @@ void NnetComputer::Backprop(CuMatrix<BaseFloat> *tmp_deriv) {
                             &output = forward_data_[c+1],
                       &output_deriv = *tmp_deriv;
     CuMatrix<BaseFloat> input_deriv;
-    component.Backprop(chunk_info_[c], chunk_info_[c+1], input, output, output_deriv, 
+    component.Backprop(input, output, output_deriv, num_chunks,
                        component_to_update, &input_deriv);
     *tmp_deriv = input_deriv;
   }

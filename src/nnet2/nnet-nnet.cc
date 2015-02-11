@@ -341,18 +341,6 @@ void Nnet::Scale(BaseFloat scale) {
   }
 }
 
-void Nnet::ScaleMaster(BaseFloat alpha, BaseFloat beta, int num_layers_beta) {
-  for (int32 i = 0; i < NumComponents(); i++) {
-    BaseFloat scale = (i < NumComponents() - num_layers_beta) ? alpha : beta;
-    UpdatableComponent *uc =
-        dynamic_cast<UpdatableComponent*>(&(GetComponent(i)));
-    if (uc != NULL) uc->Scale(scale);
-    NonlinearComponent *nc =
-        dynamic_cast<NonlinearComponent*>(&(GetComponent(i)));
-    if (nc != NULL) nc->Scale(scale);
-  }
-}
-
 void Nnet::CopyStatsFrom(const Nnet &other) {
   KALDI_ASSERT(NumComponents() == other.NumComponents());
   for (int32 i = 0; i < NumComponents(); i++) {
@@ -546,31 +534,6 @@ void Nnet::AddNnet(BaseFloat alpha,
   }
 }
 
-void Nnet::AddNnetMaster(BaseFloat alpha,
-                         BaseFloat beta,
-                         const int num_layers_beta,
-                         const Nnet &other) {
-  for (int32 i = 0; i < NumComponents(); i++) {
-    BaseFloat scale = (i < NumComponents() - num_layers_beta) ? alpha : beta;
-    UpdatableComponent *uc =
-        dynamic_cast<UpdatableComponent*>(&(GetComponent(i)));
-    const UpdatableComponent *uc_other =
-        dynamic_cast<const UpdatableComponent*>(&(other.GetComponent(i)));
-    if (uc != NULL) {
-      KALDI_ASSERT(uc_other != NULL);
-      uc->Add(scale, *uc_other);
-    }
-    NonlinearComponent *nc =
-        dynamic_cast<NonlinearComponent*>(&(GetComponent(i)));
-    const NonlinearComponent *nc_other =
-        dynamic_cast<const NonlinearComponent*>(&(other.GetComponent(i)));
-    if (nc != NULL) {
-      KALDI_ASSERT(nc_other != NULL);
-      nc->Add(scale, *nc_other);
-    }
-  }
-
-}
 
 void Nnet::Append(Component *new_component) {
   components_.push_back(new_component);

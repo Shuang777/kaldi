@@ -144,10 +144,6 @@ class Nnet {
   /// UpdatableComponents, and (unlike the ScaleComponents function) to
   /// SoftmaxComponents.
   void Scale(BaseFloat scale);
-  
-  /// Scale Components with different scale. For lower layers, use alpha
-  /// for top num_layers_beta, use beta
-  void ScaleMaster(BaseFloat alpha, BaseFloat beta, int num_layers_beta);
 
 
   /// Adds to *this, the other neural net times the scale "alpha".  This applies
@@ -155,13 +151,6 @@ class Nnet {
   /// SoftmaxComponents.
   void AddNnet(BaseFloat alpha,
                const Nnet &other);
-
-  /// Adds to *this, the other neural net is scales using alpha for lower layers,
-  /// and beta for top num_layers_beta layers.
-  void AddNnetMaster(BaseFloat alpha,
-                     BaseFloat beta,
-                     const int num_layers_beta,
-                     const Nnet &other);
 
   /// Turns the last affine layer into two layers of the same type, with a
   /// smaller dimension in between-- we're keeping the top singular values of
