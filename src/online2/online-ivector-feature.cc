@@ -113,7 +113,7 @@ void OnlineIvectorExtractorAdaptationState::LimitFrames(
                         ivector_stats.Count());
   }  
 }
-
+/*
 void OnlineIvectorExtractorAdaptationState::Write(std::ostream &os, bool binary) const {
   WriteToken(os, binary, "<OnlineIvectorExtractorAdaptationState>");  // magic string.
   WriteToken(os, binary, "<CmvnState>");
@@ -130,7 +130,7 @@ void OnlineIvectorExtractorAdaptationState::Read(std::istream &is, bool binary) 
   ExpectToken(is, binary, "<IvectorStats>");
   ivector_stats.Read(is, binary);
   ExpectToken(is, binary, "</OnlineIvectorExtractorAdaptationState>");
-}
+}*/
 
 int32 OnlineIvectorFeature::Dim() const {
   return info_.extractor.IvectorDim();
