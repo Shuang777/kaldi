@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
       KALDI_ASSERT(conf.size() == words.size() && words.size() == times.size());
       for (size_t i = 0; i < words.size(); i++) {
         KALDI_ASSERT(words[i] != 0); // Should not have epsilons.
-        ko.Stream() << key << " 1 " << (frame_shift * times[i].first) << ' '
+        ko.Stream() << key << " A " << (frame_shift * times[i].first) << ' '
                     << (frame_shift * (times[i].second-times[i].first)) << ' '
                     << words[i] << ' ' << conf[i] << '\n';
       }
