@@ -137,13 +137,17 @@ void Nnet::Backpropagate(const CuMatrixBase<BaseFloat> &out_diff, CuMatrix<BaseF
                             backpropagate_buf_[i+1], &backpropagate_buf_[i]);
     if (components_[i]->IsUpdatable()) {
       UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(components_[i]);
-      if (i >= semi_layers-1) {    // gradient reweight for semi data
-        backpropagate_buf_[i+1].MulRowsVec(frm_weights);
-        BaseFloat sum = frm_weights.Sum();
-        BaseFloat num_frames = frm_weights.Dim();
-        backpropagate_buf_[i+1].Scale(num_frames/sum);
+      if (frm_weights.Dim() == 0) {
+        uc->Update(propagate_buf_[i], backpropagate_buf_[i+1]);
+      } else {
+        if (i >= semi_layers-1) {    // gradient reweight for semi data
+          backpropagate_buf_[i+1].MulRowsVec(frm_weights);
+          BaseFloat sum = frm_weights.Sum();
+          BaseFloat num_frames = frm_weights.Dim();
+          backpropagate_buf_[i+1].Scale(num_frames/sum);
+        }
+        uc->Update(propagate_buf_[i], backpropagate_buf_[i+1]);
       }
-      uc->Update(propagate_buf_[i], backpropagate_buf_[i+1]);
     }
   }
   // eventually export the derivative
@@ -209,6 +213,26 @@ void Nnet::SetComponent(int32 c, Component *component) {
   delete components_[c];
   components_[c] = component;
   Check(); // Check that all the dimensions still match up.
+}
+
+void Nnet::SetUpdatables(std::vector<bool> updatables) {
+  KALDI_ASSERT(components_.size() == updatables.size());
+  for (int32 i=0; i<(int32)components_.size(); i++) {
+    if (components_[i]->IsUpdatableLayer()) {
+      UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(components_[i]);
+      uc->SetUpdatable(updatables[i]);
+    }
+  }
+}
+
+void Nnet::SetRefNnet(const Nnet& ref_nnet) {
+  KALDI_ASSERT(components_.size() == ref_nnet.NumComponents());
+  for (int32 i=0; i<(int32)components_.size(); i++) {
+    if (components_[i]->IsUpdatableLayer()) {
+      UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(components_[i]);
+      uc->SetRefComponent(ref_nnet.GetComponent(i));
+    }
+  }
 }
 
 void Nnet::AppendComponent(Component* dynamically_allocated_comp) {

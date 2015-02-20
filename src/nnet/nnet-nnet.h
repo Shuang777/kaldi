@@ -67,6 +67,12 @@ class Nnet {
   /// Sets the c'th component to "component", taking ownership of the pointer
   /// and deleting the corresponding one that we own.
   void SetComponent(int32 c, Component *component);
+
+  /// Set the components to be updatable or not
+  void SetUpdatables(std::vector<bool> updatables);
+
+  /// Set reference nnet for regularization
+  void SetRefNnet(const Nnet& ref_nnet);
  
   /// Appends this component to the components already in the neural net.
   /// Takes ownership of the pointer

@@ -103,6 +103,9 @@ class Component {
   /// Get Type Identification of the component
   virtual ComponentType GetType() const = 0;  
   /// Check if contains trainable parameters 
+  virtual bool IsUpdatableLayer() const { 
+    return false; 
+  }
   virtual bool IsUpdatable() const { 
     return false; 
   }
@@ -179,12 +182,17 @@ class Component {
 class UpdatableComponent : public Component {
  public: 
   UpdatableComponent(int32 input_dim, int32 output_dim)
-    : Component(input_dim, output_dim) { }
+    : Component(input_dim, output_dim), ref_component_(NULL){ }
   virtual ~UpdatableComponent() { }
 
-  /// Check if contains trainable parameters 
+  /// Check if contains trainable parameters
+  bool IsUpdatableLayer() const {
+    return true;
+  }
+  
+  // Check if it is updatable
   bool IsUpdatable() const { 
-    return true; 
+    return opts_.updatable;
   }
 
   /// Number of trainable parameters
@@ -199,6 +207,7 @@ class UpdatableComponent : public Component {
   virtual void SetTrainOptions(const NnetTrainOptions &opts) {
     opts_ = opts;
   }
+
   /// Gets the training options from the component
   const NnetTrainOptions& GetTrainOptions() const { 
     return opts_; 
@@ -206,9 +215,18 @@ class UpdatableComponent : public Component {
 
   virtual void InitData(std::istream &is) = 0;
 
+  void SetUpdatable(bool updatable) {
+    opts_.updatable = updatable;
+  }
+
+  void SetRefComponent(const Component& ref_component) {
+    ref_component_ = (dynamic_cast<const UpdatableComponent*> (&ref_component));
+  }
+
  protected:
   /// Option-class with training hyper-parameters
-  NnetTrainOptions opts_; 
+  NnetTrainOptions opts_;
+  const UpdatableComponent* ref_component_;
 };
 
 

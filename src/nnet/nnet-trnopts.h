@@ -33,11 +33,13 @@ struct NnetTrainOptions {
   BaseFloat momentum;
   BaseFloat l2_penalty;
   BaseFloat l1_penalty;
+  bool updatable;
   // default values
   NnetTrainOptions() : learn_rate(0.008),
                        momentum(0.0),
                        l2_penalty(0.0),
-                       l1_penalty(0.0) 
+                       l1_penalty(0.0),
+                       updatable(true)
                        { }
   // register options
   void Register(OptionsItf *po) {
@@ -52,7 +54,8 @@ struct NnetTrainOptions {
        << "learn_rate" << opts.learn_rate << ", "
        << "momentum" << opts.momentum << ", "
        << "l2_penalty" << opts.l2_penalty << ", "
-       << "l1_penalty" << opts.l1_penalty;
+       << "l1_penalty" << opts.l1_penalty << ", "
+       << "updatable " << opts.updatable;
     return os;
   }
 };

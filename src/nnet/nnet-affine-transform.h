@@ -130,8 +130,14 @@ class AffineTransform : public UpdatableComponent {
   }
   
   std::string Info() const {
+    std::string ref_str = "";
+    if (ref_component_ != NULL) {
+      const AffineTransform* af_component = dynamic_cast<const AffineTransform*> (ref_component_);
+      ref_str = "\n  ref_linearity" + MomentStatistics(af_component->GetLinearity()) +
+                "\n  ref_bias" + MomentStatistics(af_component->GetBias());
+    }
     return std::string("\n  linearity") + MomentStatistics(linearity_) +
-           "\n  bias" + MomentStatistics(bias_);
+           "\n  bias" + MomentStatistics(bias_) + ref_str;
   }
   std::string InfoGradient() const {
     return std::string("\n  linearity_grad") + MomentStatistics(linearity_corr_) + 
@@ -172,6 +178,10 @@ class AffineTransform : public UpdatableComponent {
     // l2 regularization
     if (l2 != 0.0) {
       linearity_.AddMat(-lr*l2*num_frames, linearity_);
+      if (ref_component_ != NULL) {
+        const AffineTransform* af_component = dynamic_cast<const AffineTransform*> (ref_component_);
+        linearity_.AddMat(lr*l2*num_frames, af_component->GetLinearity());
+      }
     }
     // l1 regularization
     if (l1 != 0.0) {

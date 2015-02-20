@@ -24,6 +24,32 @@
 #include "base/timer.h"
 #include "cudamatrix/cu-device.h"
 
+std::vector<bool> ParseColonBool(std::string s) {
+  std::vector<bool> out_bools;
+
+  std::string s_copy = s;
+  std::string token;
+  size_t pos = 0;
+  while (!s.empty()) {
+    if ((pos = s.find(":")) != std::string::npos) {
+      token = s.substr(0, pos);
+    } else {
+      token = s;
+      pos = s.size()-1;
+    }
+    if (token == "false") {
+      out_bools.push_back(false);
+    } else if (token == "true") {
+      out_bools.push_back(true);
+    } else {
+      KALDI_ERR << "Unparsable string : " << s_copy;
+    }
+    s.erase(0, pos + 1);
+  }
+  
+  return out_bools;
+}
+
 int main(int argc, char *argv[]) {
   using namespace kaldi;
   using namespace kaldi::nnet1;
@@ -60,13 +86,19 @@ int main(int argc, char *argv[]) {
     po.Register("length-tolerance", &length_tolerance, "Allowed length difference of features/targets (frames)");
 
     int32 semi_layers = -1;
-    po.Register("semi-layers", &semi_layers, "Layers to update for semi data (default is -1, means no semidata)");
+    po.Register("semi-layers", &semi_layers, "Layers to reweight for semi data (default is -1, means no semidata)");
+
+    std::string updatable_layers = "";
+    po.Register("updatable-layers", &updatable_layers, "Layers to update");
     
     std::string frame_weights;
     po.Register("frame-weights", &frame_weights, "Per-frame weights to scale gradients (frame selection/weighting).");
 
     std::string use_gpu="yes";
     po.Register("use-gpu", &use_gpu, "yes|no|optional, only has effect if compiled with CUDA");
+    
+    std::string ref_model_filename="None";
+    po.Register("ref-nnet", &ref_model_filename, "Reference nnet for regularization (default None)");
     
     double dropout_retention = 0.0;
     po.Register("dropout-retention", &dropout_retention, "number between 0..1, saying how many neurons to preserve (0.0 will keep original value");
@@ -106,6 +138,16 @@ int main(int argc, char *argv[]) {
     Nnet nnet;
     nnet.Read(model_filename);
     nnet.SetTrainOptions(trn_opts);
+    if (updatable_layers != "") {
+      std::vector<bool> updatable = ParseColonBool(updatable_layers);
+      nnet.SetUpdatables(updatable);
+    }
+
+    Nnet ref_nnet;
+    if (ref_model_filename != "None") {
+      ref_nnet.Read(ref_model_filename);
+      nnet.SetRefNnet(ref_nnet);
+    }
 
     if (dropout_retention > 0.0) {
       nnet_transf.SetDropoutRetention(dropout_retention);
@@ -250,7 +292,12 @@ int main(int argc, char *argv[]) {
             // backpropagate
             nnet.Backpropagate(obj_diff, NULL);
           } else {  // gradient cutoff for semidata, use weights to indicate semi or not
-            nnet.Backpropagate(obj_diff, NULL, CuVector<BaseFloat>(frm_weights), semi_layers);
+            if (frame_weights == "") {
+              CuVector<BaseFloat> empty_weights;
+              nnet.Backpropagate(obj_diff, NULL, empty_weights, semi_layers);
+            } else {
+              nnet.Backpropagate(obj_diff, NULL, CuVector<BaseFloat>(frm_weights), semi_layers);
+            }
           }
         }
 
