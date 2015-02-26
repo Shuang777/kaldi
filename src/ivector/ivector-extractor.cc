@@ -60,12 +60,13 @@ void IvectorExtractor::InvertWithFlooring(const SpMatrix<double> &inverse_var,
 void IvectorExtractor::GetIvectorDistribution(
     const IvectorExtractorUtteranceStats &utt_stats,
     VectorBase<double> *mean,
-    SpMatrix<double> *var) const {
+    SpMatrix<double> *var,
+    const double lambda /*= 1.0*/) const {
   if (!IvectorDependentWeights()) {
     Vector<double> linear(IvectorDim());
     SpMatrix<double> quadratic(IvectorDim());
     GetIvectorDistMean(utt_stats, &linear, &quadratic);
-    GetIvectorDistPrior(utt_stats, &linear, &quadratic);
+    GetIvectorDistPrior(utt_stats, &linear, &quadratic, lambda);
     if (var != NULL) {
       var->CopyFromSp(quadratic);
       var->Invert(); // now it's a variance.
@@ -271,11 +272,12 @@ void IvectorExtractor::GetIvectorDistMean(
 void IvectorExtractor::GetIvectorDistPrior(
     const IvectorExtractorUtteranceStats &utt_stats,
     VectorBase<double> *linear,
-    SpMatrix<double> *quadratic) const {
+    SpMatrix<double> *quadratic,
+    const double lambda /*= 1.0*/) const {
 
   (*linear)(0) += prior_offset_; // the zero'th dimension has an offset mean.
   /// The inverse-variance for the prior is the unit matrix.
-  quadratic->AddToDiag(1.0);
+  quadratic->AddToDiag(lambda);
 }
 
 
@@ -928,7 +930,8 @@ void IvectorExtractorStats::CommitStatsForPrior(
 
 void IvectorExtractorStats::CommitStatsForUtterance(
     const IvectorExtractor &extractor,
-    const IvectorExtractorUtteranceStats &utt_stats) {
+    const IvectorExtractorUtteranceStats &utt_stats,
+    const double lambda /*=1.0*/) {
   
   int32 ivector_dim = extractor.IvectorDim();
   Vector<double> ivec_mean(ivector_dim);
@@ -936,7 +939,8 @@ void IvectorExtractorStats::CommitStatsForUtterance(
 
   extractor.GetIvectorDistribution(utt_stats,
                                    &ivec_mean,
-                                   &ivec_var);
+                                   &ivec_var,
+                                   lambda);
 
   if (config_.compute_auxf)
     tot_auxf_ += extractor.GetAuxf(utt_stats, ivec_mean, &ivec_var);
@@ -981,7 +985,8 @@ void IvectorExtractorStats::CheckDims(const IvectorExtractor &extractor) const {
 void IvectorExtractorStats::AccStatsForUtterance(
     const IvectorExtractor &extractor,
     const MatrixBase<BaseFloat> &feats,
-    const Posterior &post) {
+    const Posterior &post,
+    const double lambda /*=1.0*/) {
   typedef std::vector<std::pair<int32, BaseFloat> > VecType;
 
   CheckDims(extractor);

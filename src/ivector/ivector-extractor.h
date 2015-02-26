@@ -136,7 +136,8 @@ class IvectorExtractor {
   void GetIvectorDistribution(
       const IvectorExtractorUtteranceStats &utt_stats,
       VectorBase<double> *mean,
-      SpMatrix<double> *var) const;
+      SpMatrix<double> *var,
+      const double lambda = 1.0) const;
 
   /// The distribution over iVectors, in our formulation, is not centered at
   /// zero; its first dimension has a nonzero offset.  This function returns
@@ -206,7 +207,8 @@ class IvectorExtractor {
   void GetIvectorDistPrior(
       const IvectorExtractorUtteranceStats &utt_stats,
       VectorBase<double> *linear,
-      SpMatrix<double> *quadratic) const;
+      SpMatrix<double> *quadratic,
+      const double lambda = 1.0) const;
 
   /// Gets the linear and quadratic terms in the distribution over
   /// iVectors, that arise from the weights (if applicable).  The
@@ -444,7 +446,8 @@ class IvectorExtractorStats {
   
   void AccStatsForUtterance(const IvectorExtractor &extractor,
                             const MatrixBase<BaseFloat> &feats,
-                            const Posterior &post);
+                            const Posterior &post,
+                            const double lambda = 1.0);
 
   // This version (intended mainly for testing) works out the Gaussian
   // posteriors from the model.  Returns total log-like for feats, given
@@ -476,7 +479,8 @@ class IvectorExtractorStats {
   
   // This is called by AccStatsForUtterance
   void CommitStatsForUtterance(const IvectorExtractor &extractor,
-                               const IvectorExtractorUtteranceStats &utt_stats);
+                               const IvectorExtractorUtteranceStats &utt_stats,
+                               const double lambda = 1.0);
 
   /// This is called by CommitStatsForUtterance.  We commit the stats
   /// used to update the M matrix.
