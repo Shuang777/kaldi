@@ -633,6 +633,45 @@ class IvectorExtractorStats {
 };
 
 
+/// IvectorExtractorCVStats is a class to perform cross validation on regularization of ivector extractor
+class IvectorExtractorCVStats {
+ public:
+  friend class IvectorExtractor;
+
+  IvectorExtractorCVStats(): tot_auxf_(0.0), num_ivectors_(0), lambda_(1.0), cv_share_(5) {}
+  
+  IvectorExtractorCVStats(double lambda, int32 cv_share): tot_auxf_(0.0), 
+                                                        num_ivectors_(0), 
+                                                        lambda_(lambda),
+                                                        cv_share_(cv_share) { }
+  
+  void AccStatsForUtterance(const IvectorExtractor &extractor,
+                            const Matrix<BaseFloat> &feats,
+                            const Posterior &post);
+
+  double AuxfPerFrame() { return tot_auxf_ / num_ivectors_; }
+
+ protected:
+  friend class IvectorExtractorUpdateProjectionClass;
+  friend class IvectorExtractorUpdateWeightClass;
+  
+  // This is called by AccStatsForUtterance
+  void CommitStatsForUtterance(const IvectorExtractor &extractor,
+                               const IvectorExtractorUtteranceStats &utt_stats);
+
+  /// Total auxiliary function over the training data-- can be
+  /// used to check convergence, etc.
+  double tot_auxf_;
+
+  int32 num_ivectors_;
+
+  double lambda_;
+
+  double cv_share_;
+
+};
+
+
 
 }  // namespace kaldi
 

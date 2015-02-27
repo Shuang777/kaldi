@@ -19,6 +19,7 @@
 #include "base/timer.h"
 #include "ivector/ivector-extractor.h"
 #include "thread/kaldi-task-sequence.h"
+#include "ivector/ivector-randomizer.h"
 
 namespace kaldi {
 
@@ -1574,6 +1575,58 @@ double EstimateIvectorsOnline(
 }
 
 
+void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extractor,
+                                                   const Matrix<BaseFloat> &feats,
+                                                   const Posterior &post) {
+
+  typedef std::vector<std::pair<int32, BaseFloat> > VecType;
+
+  int32 num_gauss = extractor.NumGauss(), feat_dim = extractor.FeatDim();
+
+  if (feat_dim != feats.NumCols()) {
+    KALDI_ERR << "Feature dimension mismatch, expected " << feat_dim
+              << ", got " << feats.NumCols();
+  }
+  KALDI_ASSERT(static_cast<int32>(post.size()) == feats.NumRows());
+
+  // The zeroth and 1st-order stats are in "utt_stats".
+  IvectorExtractorUtteranceStats utt_stats(num_gauss, feat_dim,
+                                           false /*update_variance*/);
+
+  int32 num_frames = feats.NumCols();
+  int32 minibatch_size = num_frames / cv_share_;
+
+  NnetDataRandomizerOptions rnd_opts;
+  rnd_opts.SetMinibatchSize(minibatch_size);
+
+  PosteriorRandomizer posts_randomizer(rnd_opts);
+  kaldi::MatrixRandomizer feature_randomizer(rnd_opts);
+
+  feature_randomizer.AddData(feats);
+  posts_randomizer.AddData(post);
+
+  RandomizerMask randomizer_mask(rnd_opts);
+  const std::vector<int32>& mask = randomizer_mask.Generate(feature_randomizer.NumFrames());
+  feature_randomizer.Randomize(mask);
+  posts_randomizer.Randomize(mask);
+
+  for ( ; !feature_randomizer.Done(); feature_randomizer.Next(), posts_randomizer.Next()) {
+    const Matrix<BaseFloat>& cv_feats = feature_randomizer.Value();
+    const Posterior& cv_posts = posts_randomizer.Value();
+
+
+    utt_stats.AccStats(cv_feats, cv_posts);
   
+    CommitStatsForUtterance(extractor, utt_stats);
+  }
+
+}
+
+void IvectorExtractorCVStats::CommitStatsForUtterance(const IvectorExtractor &extractor,
+                                                      const IvectorExtractorUtteranceStats &utt_stats) {
+
+}
+
+
 
 } // namespace kaldi
