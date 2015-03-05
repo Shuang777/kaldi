@@ -132,6 +132,40 @@ void IvectorExtractor::GetIvectorDistribution(
   }
 }
 
+double IvectorExtractor::GetResidue(
+    const IvectorExtractorUtteranceStats &utt_stats,
+    VectorBase<double> *mean,
+    SpMatrix<double> *var,
+    const double lambda /*= 1.0*/) const {
+    
+  int32 I = NumGauss();
+  double residue = 0;
+  for (int32 i = 0; i < I; i++) {
+    double gamma = utt_stats.gamma_(i);
+    Vector<double> estimates(FeatDim());
+
+    double norm = mean->Norm(2.0);
+
+    residue += lambda * norm * norm;
+
+    Vector<double> x(utt_stats.X_.Row(i)); // == \gamma(i) \m_i
+    
+    if (gamma != 0.0) {
+      x.Scale(1.0/gamma);   // == \m_i
+    }
+
+    estimates.AddMatVec(1.0, M_[i], kNoTrans, *mean, 1.0);
+
+    estimates.AddVec(-1.0, x);
+
+    norm = estimates.Norm(2.0);
+
+    residue += norm * norm;
+  }
+  return residue;
+}
+ 
+
 
 IvectorExtractor::IvectorExtractor(
     const IvectorExtractorOptions &opts,
@@ -739,6 +773,16 @@ void IvectorExtractorUtteranceStats::AccStats(
   }
 }
 
+void IvectorExtractorUtteranceStats::Clear(){
+  int32 num_gauss = gamma_.Dim();
+  int32 feat_dim = X_.NumCols();
+  gamma_.Resize(num_gauss);
+  X_.Resize(num_gauss, feat_dim);
+  if (!S_.empty()) {
+    for (int32 i = 0; i < num_gauss; i++)
+      S_[i].Resize(feat_dim);
+  }
+}
 
 IvectorExtractorStats::IvectorExtractorStats(
     const IvectorExtractor &extractor,
@@ -1008,7 +1052,7 @@ void IvectorExtractorStats::AccStatsForUtterance(
 
   utt_stats.AccStats(feats, post);
   
-  CommitStatsForUtterance(extractor, utt_stats);
+  CommitStatsForUtterance(extractor, utt_stats, lambda);
 }
 
 double IvectorExtractorStats::AccStatsForUtterance(
@@ -1589,11 +1633,12 @@ void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extra
   }
   KALDI_ASSERT(static_cast<int32>(post.size()) == feats.NumRows());
 
-  // The zeroth and 1st-order stats are in "utt_stats".
-  IvectorExtractorUtteranceStats utt_stats(num_gauss, feat_dim,
-                                           false /*update_variance*/);
 
-  int32 num_frames = feats.NumCols();
+  int32 num_frames = feats.NumRows();
+  if (num_frames < cv_share_) {
+    KALDI_LOG << "Num frames " << num_frames << " too small for cross validation, skipping.";
+    return;
+  }
   int32 minibatch_size = num_frames / cv_share_;
 
   NnetDataRandomizerOptions rnd_opts;
@@ -1610,22 +1655,48 @@ void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extra
   feature_randomizer.Randomize(mask);
   posts_randomizer.Randomize(mask);
 
+  // The zeroth and 1st-order stats are in "utt_stats".
+  IvectorExtractorUtteranceStats utt_stats(num_gauss, feat_dim,
+                                           false /*update_variance*/);
+
+  IvectorExtractorUtteranceStats utt_cv_stats(num_gauss, feat_dim,
+                                              false /*update_variance*/);
+
   for ( ; !feature_randomizer.Done(); feature_randomizer.Next(), posts_randomizer.Next()) {
+    const Matrix<BaseFloat>& feats = feature_randomizer.LeftOverValue();
+    const Posterior& posts = posts_randomizer.LeftOverValue();
+
+    KALDI_ASSERT(feats.NumRows() == posts.size());
+
+    utt_stats.Clear();
+    utt_stats.AccStats(feats, posts);
+ 
+    int32 ivector_dim = extractor.IvectorDim();
+    Vector<double> ivec_mean(ivector_dim);
+    SpMatrix<double> ivec_var(ivector_dim);
+
+    extractor.GetIvectorDistribution(utt_stats,
+                                     &ivec_mean,
+                                     &ivec_var,
+                                     lambda_);
+
     const Matrix<BaseFloat>& cv_feats = feature_randomizer.Value();
     const Posterior& cv_posts = posts_randomizer.Value();
+    utt_cv_stats.Clear();
+    utt_cv_stats.AccStats(cv_feats, cv_posts);
 
+    double residue = extractor.GetResidue(utt_cv_stats,
+                                          &ivec_mean,
+                                          &ivec_var,
+                                          lambda_);
 
-    utt_stats.AccStats(cv_feats, cv_posts);
-  
-    CommitStatsForUtterance(extractor, utt_stats);
+    log_tot_residue_lock_.Lock();
+    log_tot_residue_ = LogAdd(log_tot_residue_, Log(residue));
+    log_tot_residue_lock_.Unlock();
+
   }
-
 }
 
-void IvectorExtractorCVStats::CommitStatsForUtterance(const IvectorExtractor &extractor,
-                                                      const IvectorExtractorUtteranceStats &utt_stats) {
-
-}
 
 
 

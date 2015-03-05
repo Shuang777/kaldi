@@ -16,8 +16,8 @@ BINFILES = ivector-extractor-init ivector-extractor-acc-stats \
            logistic-regression-copy create-split-from-vad \
            ivector-extract-online ivector-adapt-plda \
 					 ivector-extractor-copy \
-					 ivector-extractor-update-lambda \
-					 randomize-matrix
+					 ivector-extractor-cross-validation \
+					 randomize-matrix randomize-int-vector
 
 OBJFILES =
 

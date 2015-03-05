@@ -127,10 +127,13 @@ class StdVectorRandomizer {
   void Next();
   /// Returns matrix-window with next mini-batch
   const std::vector<T>& Value();
+  /// Returns data with mini-batch excluded
+  const std::vector<T>& LeftOverValue();
 
  private:
   std::vector<T> data_; // can be larger than 'randomizer_size'
   std::vector<T> minibatch_; // buffer for mini-batch
+  std::vector<T> left_over_; // buffer for mini-batch
 
   /// Cursor to beginning of data (row index, moves as mini-batches are delivered)
   int32 data_begin_;

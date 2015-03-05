@@ -100,8 +100,10 @@ const Matrix<BaseFloat>& MatrixRandomizer::LeftOverValue() {
   left_over_.Resize(data_end_ - conf_.minibatch_size, data_.NumCols(), kUndefined);
   SubMatrix<BaseFloat> left_part = left_over_.RowRange(0, data_begin_);
   left_part.CopyFromMat(data_.RowRange(0, data_begin_));
-  SubMatrix<BaseFloat> right_part = left_over_.RowRange(data_begin_, left_over_.NumRows() - data_begin_);
-  right_part.CopyFromMat(data_.RowRange(data_begin_+conf_.minibatch_size, data_end_ - (data_begin_+conf_.minibatch_size)));
+  if (left_over_.NumRows() - data_begin_ > 0) {
+    SubMatrix<BaseFloat> right_part = left_over_.RowRange(data_begin_, left_over_.NumRows() - data_begin_);
+    right_part.CopyFromMat(data_.RowRange(data_begin_+conf_.minibatch_size, data_end_ - (data_begin_+conf_.minibatch_size)));
+  }
   return left_over_;
 }
 
@@ -161,6 +163,22 @@ const std::vector<T>& StdVectorRandomizer<T>::Value() {
   typename std::vector<T>::iterator last  = data_.begin() + data_begin_ + conf_.minibatch_size; //not-copied
   std::copy(first, last, minibatch_.begin());
   return minibatch_;
+}
+
+template<typename T>
+const std::vector<T>& StdVectorRandomizer<T>::LeftOverValue() {
+  KALDI_ASSERT(data_end_ - data_begin_ >= conf_.minibatch_size); // have data for minibatch
+  left_over_.resize(data_end_ - conf_.minibatch_size);
+
+  typename std::vector<T>::iterator first = data_.begin();
+  typename std::vector<T>::iterator last  = data_.begin() + conf_.minibatch_size; //not-copied
+  std::copy(first, last, left_over_.begin());
+
+  first = data_.begin() + data_begin_ + conf_.minibatch_size;
+  last  = data_.begin() + data_end_; //not-copied
+  std::copy(first, last, left_over_.begin() + data_begin_);
+
+  return left_over_;
 }
 
 // Instantiate template StdVectorRandomizer with types we expect to operate on

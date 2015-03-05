@@ -80,6 +80,8 @@ class IvectorExtractorUtteranceStats {
   
   void Scale(double scale); // Used to apply acoustic scale.
 
+  void Clear();
+
  protected:
   friend class IvectorExtractor;
   friend class IvectorExtractorStats;
@@ -138,6 +140,12 @@ class IvectorExtractor {
       VectorBase<double> *mean,
       SpMatrix<double> *var,
       const double lambda = 1.0) const;
+
+  /// Get residue from regression
+  double GetResidue (const IvectorExtractorUtteranceStats &utt_stats,
+                     VectorBase<double> *mean,
+                     SpMatrix<double> *var,
+                     const double lambda = 1.0) const;
 
   /// The distribution over iVectors, in our formulation, is not centered at
   /// zero; its first dimension has a nonzero offset.  This function returns
@@ -638,10 +646,9 @@ class IvectorExtractorCVStats {
  public:
   friend class IvectorExtractor;
 
-  IvectorExtractorCVStats(): tot_auxf_(0.0), num_ivectors_(0), lambda_(1.0), cv_share_(5) {}
+  IvectorExtractorCVStats(): log_tot_residue_(kLogZeroDouble), lambda_(1.0), cv_share_(5) {}
   
-  IvectorExtractorCVStats(double lambda, int32 cv_share): tot_auxf_(0.0), 
-                                                        num_ivectors_(0), 
+  IvectorExtractorCVStats(double lambda, int32 cv_share): log_tot_residue_(kLogZeroDouble), 
                                                         lambda_(lambda),
                                                         cv_share_(cv_share) { }
   
@@ -649,25 +656,21 @@ class IvectorExtractorCVStats {
                             const Matrix<BaseFloat> &feats,
                             const Posterior &post);
 
-  double AuxfPerFrame() { return tot_auxf_ / num_ivectors_; }
+  double AvgLogResidue() { return log_tot_residue_ / cv_share_; }
 
  protected:
   friend class IvectorExtractorUpdateProjectionClass;
   friend class IvectorExtractorUpdateWeightClass;
   
-  // This is called by AccStatsForUtterance
-  void CommitStatsForUtterance(const IvectorExtractor &extractor,
-                               const IvectorExtractorUtteranceStats &utt_stats);
-
   /// Total auxiliary function over the training data-- can be
   /// used to check convergence, etc.
-  double tot_auxf_;
-
-  int32 num_ivectors_;
+  double log_tot_residue_;
 
   double lambda_;
 
   double cv_share_;
+
+  Mutex log_tot_residue_lock_;
 
 };
 

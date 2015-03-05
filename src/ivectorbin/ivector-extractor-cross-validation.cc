@@ -30,9 +30,9 @@ namespace kaldi {
 // this class is used to run the command
 //  stats.AccStatsForUtterance(extractor, mat, posterior);
 // in parallel.
-class IvectorTask {
+class IvectorCVTask {
  public:
-  IvectorTask(const IvectorExtractor &extractor,
+  IvectorCVTask(const IvectorExtractor &extractor,
               const Matrix<BaseFloat> &features,
               const Posterior &posterior,
               IvectorExtractorCVStats *stats): extractor_(extractor),
@@ -43,7 +43,7 @@ class IvectorTask {
   void operator () () {
     stats_->AccStatsForUtterance(extractor_, features_, posterior_);
   }
-  ~IvectorTask() { }  // the destructor doesn't have to do anything.
+  ~IvectorCVTask() { }  // the destructor doesn't have to do anything.
  private:
   const IvectorExtractor &extractor_;
   Matrix<BaseFloat> features_; // not a reference, since features come from a
@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
         "Supports multiple threads, but won't be able to make use of too many at a time\n"
         "(e.g. more than about 4)\n"
         "Usage:  ivector-extractor-cross-validation [options] <model-in> <feature-rspecifier>"
-        "<posteriors-rspecifier> <stats-out>\n"
+        "<posteriors-rspecifier>\n"
         "e.g.: \n"
         " fgmm-global-gselect-to-post 1.fgmm '$feats' 'ark:gunzip -c gselect.1.gz|' ark:- | \\\n"
         "  ivector-extractor-cross-validation 2.ie '$feats' ark,s,cs:-\n";
@@ -121,10 +121,9 @@ int main(int argc, char *argv[]) {
     
     int64 tot_t = 0;
     int32 num_done = 0, num_err = 0;
-    double avg_residue;
     
     {
-      TaskSequencer<IvectorTask> sequencer(sequencer_opts);
+      TaskSequencer<IvectorCVTask> sequencer(sequencer_opts);
       
       for (; !feature_reader.Done(); feature_reader.Next()) {
         std::string key = feature_reader.Key();
@@ -156,10 +155,8 @@ int main(int argc, char *argv[]) {
     KALDI_LOG << "Done " << num_done << " files, " << num_err
               << " with errors.  Total frames " << tot_t;
     
-    KALDI_LOG << "Average residue is %f" << stats.GetAvgResidue();
+    KALDI_LOG << "Average residue is " << stats.AvgLogResidue();
     
-    KALDI_LOG << "Wrote stats to " << accs_wxfilename;
-
     return (num_done != 0 ? 0 : 1);
   } catch(const std::exception &e) {
     std::cerr << e.what();
