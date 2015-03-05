@@ -41,7 +41,8 @@ use Data::Dumper;
 #   -  lexiconp.syl2phn.txt
 #
 ###############################################################################
-GetOptions("posphone!" => \$posphone);
+$posphone = false;
+GetOptions("posphone=s" => \$posphone);
 
 if ($#ARGV == 1) {
     $expDir = $ARGV[0];
@@ -127,7 +128,7 @@ while ($line=<INLEX>) {
                 } elsif ($i == $#sylpronpsplit and $p == $#sylpron) { $wrdpos="_E";
                 } else { $wrdpos="_I";
                 }
-                if (not $posphone) {
+                if ($posphone eq 'false') {
                   $wrdpos = "";
                   $sylpos = "";
                 }

@@ -97,7 +97,7 @@ mkdir -p $dir $tmpdir $dir/phones
 ! utils/validate_dict_dir.pl $srcdir && \
   echo "*Error validating directory $srcdir*" && exit 1;
 
-myutils/prepare_syl_lexicon.pl $srcdir $tmpdir
+myutils/prepare_syl_lexicon.pl --posphone $position_dependent_phones $srcdir $tmpdir
 
 # add disambig symbols to the lexicon in $tmpdir/lexiconp.syl2phn.txt and $tmpdir/lexiconp.sylwrd2phn.txt
 # and produce $tmpdir/lexicon_disambig.syl2phn.txt and $tmpdir/lexicon_disambig.sylwrd2phn.txt
@@ -119,7 +119,7 @@ echo $ndisambig > $tmpdir/lex_ndisambig.syl2phn
 echo "<eps>" | cat - $dir/phones/{silence,nonsilence,disambig.syl2phn}.txt | \
   awk '{n=NR-1; print $1, n;}' > $dir/phones.syl2phn.txt 
 
-if $position_dependent_phones; then
+if [ $position_dependent_phones == true ]; then
   awk 'NR==FNR {
          if (NF == 3) { print $3, "singleton";}
          else if (NF > 3){

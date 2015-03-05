@@ -244,6 +244,7 @@ if [ $stage -le 6 ]; then
   $cmd JOB=1:$nj $dir/log/acoustic_rescore.JOB.log \
     gmm-rescore-lattice $final_model "ark:gunzip -c $dir/lat2.JOB.gz|" "$feats" ark:- \| \
     $aligncmd $final_model ark:- "ark:|gzip -c > $dir/lat.JOB.gz" || exit 1;
+  touch $dir/.done.align
   if $cleanup; then
     rm $dir/lat2.*.gz
   fi
@@ -252,7 +253,8 @@ fi
 if ! $skip_scoring ; then
   [ ! -x mylocal/score.sh ] && \
     echo "$0: not scoring because mylocal/score.sh does not exist or not executable." && exit 1;
-  mylocal/score.sh $scoring_opts --cmd "$cmd" $data $graphdir $dir
+  [[ $graphdir =~ syl ]] && wrdsylopt="--wrdsyl syl"
+  mylocal/score.sh $scoring_opts $wrdsylopt --cmd "$cmd" $data $graphdir $dir
 fi
 
 exit 0;

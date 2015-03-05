@@ -37,10 +37,14 @@ find -L $latdir -name '*.slf.gz' -o -name '*.slf' -o -name '*.lat.gz' -o -name '
 mykwsutils/downcase-kwlist.lang_depend.pl $kwlist_file > $expdir/lc.kwlist.xml
 mykwsutils/hescii-downcase-kwlist.py $expdir/lc.kwlist.xml > $expdir/lc.hescii.kwlist.xml
 
+kwlist_file_search=$kwlist_file
+
 [[ $langpack =~ "LLP" ]] && is_llp=1 || is_llp=0
 mykwsutils/kwlist2oov.pl $kwlist_file $is_llp > $expdir/oov.counts
 
 mykwsutils/create_keywords_surface_forms.pl $expdir/lc.hescii.kwlist.xml $word_surface_file $expdir/keywords_surface_forms.txt
+
+kwlist_file_search=$expdir/lc.hescii.kwlist.xml
 fi
 
 if [ $stage -le 1 ]; then
@@ -52,7 +56,7 @@ utils/split_scp.pl $expdir/lat.list $split_lats
 
 $decode_cmd JOB=1:$nj $expdir/log/create_index.JOB.log \
   mykwsutils/create_index.sh --posterior-scale $posterior_scale --lm-scale $lm_scale \
-    $kwlist_file $ecf_file $expdir $expdir/lat.JOB.list
+    $kwlist_file_search $ecf_file $expdir $expdir/lat.JOB.list
 
 mykwsutils/merge_search_results.pl $expdir/lat.*.search_results.xml > $expdir/kws_output.raw.xml
 fi

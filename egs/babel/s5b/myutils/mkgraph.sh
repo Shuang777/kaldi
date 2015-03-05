@@ -134,6 +134,8 @@ else
 fi
 
 mkdir -p $dir/phones
+files="word_boundary align_lexicon disambig"
+[ ! -z "$Lmiddle" ] && files="align_lexicon disambig"
 for i in word_boundary align_lexicon disambig; do
   [ -f $lang/phones/${i}${Lmiddle}.int ] && cp $lang/phones/${i}${Lmiddle}.int $dir/phones/${i}.int
   [ -f $lang/phones/${i}${Lmiddle}.txt ] && cp $lang/phones/${i}${Lmiddle}.txt $dir/phones/${i}.txt

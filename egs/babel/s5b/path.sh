@@ -1,4 +1,3 @@
-export KALDI_ROOT=/u/drspeech/data/swordfish/users/suhang/projects/kaldi/kaldi-trunk
 export LD_LIBRARY_PATH=/u/suhang/libtmp:$LD_LIBRARY_PATH
 export PYTHONPATH=${SWORDFISH_ROOT}/share/lib/python:${PYTHONPATH}
 export PATH=${SWORDFISH_ROOT}/share/bin:${SWORDFISH_ROOT}/${SWORDFISH_ARCH}/bin:${F4DE_BASE}/bin:${PATH}

@@ -26,7 +26,7 @@ if [ ! -f $dir/.done ]; then
     mysteps/train_multi_nnet.sh --hid-layers 2 --hid-dim 1200 --bn-dim 80 --learn-rate 0.002 --cv-subset-factor 0.1 \
     --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5${langext}/decode_unsup_pem_${feattype} \
     --semialidir exp/${traindata}_tri5${langext}/decode_unsup_pem_${feattype} --multi-split $multi_split \
-    data/$traindata data/lang${langext} exp/${traindata}_tri5_ali${langext} $dir || exit 1;
+    data/$traindata exp/${traindata}_tri5_ali${langext} $dir || exit 1;
   touch $dir/.done
 fi
 
@@ -35,7 +35,7 @@ fi
 feature_transform=$dir/final.feature_transform.part1
 if [ ! -f $feature_transform ] || [ $feature_transform -ot $dir/final.nnet ]; then
   nnet-concat $dir/final.feature_transform \
-    "nnet-copy --remove-last-layers=4 --binary=false $dir/final.nnet - |" \
+    "multi-nnet-to-nnet $dir/final.nnet 0 - |nnet-copy --remove-last-layers=4 --binary=false - - |" \
     "utils/nnet/gen_splice.py --fea-dim=80 --splice=2 --splice-step=5 |" \
     $feature_transform
 fi
@@ -49,7 +49,7 @@ if [ ! -f $dir/.done ]; then
     mysteps/train_multi_nnet.sh --hid-layers 2 --hid-dim 1200 --bn-dim 30 --feature-transform $feature_transform --learn-rate 0.002 --cv-subset-factor 0.1 \
     --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5${langext}/decode_unsup_pem_${feattype} \
     --semialidir exp/${traindata}_tri6_nnet${langext}/decode_unsup_pem_${feattype} --multi-split $multi_split \
-    data/$traindata data/lang exp/${traindata}_tri5_ali${langext} $dir || exit 1;
+    data/$traindata exp/${traindata}_tri5_ali${langext} $dir || exit 1;
   touch $dir/.done
 fi
 

@@ -115,6 +115,8 @@ case $feat_type in
    ;;
   fmllr) feats="scp:$sdata/JOB/feats.scp"
    ;;
+  traps) feats="scp:$sdata/JOB/feats.scp"
+   ;;
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
 if [ ! -z "$transform_dir" ]; then
@@ -124,7 +126,7 @@ if [ ! -z "$transform_dir" ]; then
     [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
       && echo "$0: #jobs mismatch with transform-dir." && exit 1;
     feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark,s,cs:$transform_dir/trans.JOB ark:- ark:- |"
-  else
+  elif [[ "$feat_type" == "raw" || "$feat_type" == "fmllr" ]]; then
     [ ! -f $transform_dir/raw_trans.1 ] && echo "$0: no such file $transform_dir/raw_trans.1" && exit 1;
     [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
       && echo "$0: #jobs mismatch with transform-dir." && exit 1;

@@ -161,7 +161,7 @@ while [ $x -lt $num_iters ]; do
       echo "Best lambda from cross validation is $best_lambda"
 
     else
-      best_lambda=lambda
+      best_lambda=$lambda
     fi
 
     Args=() # bash array of training commands for 1:nj, that put accs to stdout.

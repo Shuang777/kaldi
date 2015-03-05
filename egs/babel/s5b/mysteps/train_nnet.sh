@@ -71,19 +71,16 @@ echo "$0 $@"  # Print the command line for logging
 . parse_options.sh || exit 1;
 
 if [ $# != 4 ]; then
-   echo "Usage: $0 <data-dir> <lang-dir> <ali-dir> <exp-dir>"
-   echo " e.g.: $0 data/train data/lang exp/mono_ali exp/mono_nnet"
+   echo "Usage: $0 <data-dir> <ali-dir> <exp-dir>"
+   echo " e.g.: $0 data/train exp/mono_ali exp/mono_nnet"
    echo "main options (for others, see top of script file)"
    echo "  --config <config-file>  # config containing options"
    exit 1;
 fi
 
 data=$1
-lang=$2
-alidir=$3
-dir=$4
-
-silphonelist=`cat $lang/phones/silence.csl` || exit 1;
+alidir=$2
+dir=$3
 
 
 for f in $alidir/final.mdl $alidir/ali.1.gz $data/feats.scp; do
