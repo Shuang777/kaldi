@@ -1,4 +1,6 @@
 #!/bin/bash
+{
+set -e
 
 # Copyright   2013  Daniel Povey
 # Apache 2.0.
@@ -43,6 +45,9 @@ posterior_scale=1.0 # This scale helps to control for successve features being h
 sum_accs_opt=
 vad=true
 add_delta=true
+lambda=1.0
+subsample=1
+search_lambda=false
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -86,8 +91,8 @@ nj_full=$[$nj*$num_processes]
 sdata=$data/split$nj_full;
 utils/split_data.sh $data $nj_full || exit 1;
 
-delta_opts=`cat $srcdir/delta_opts 2>/dev/null`
 if [ -f $srcdir/delta_opts ]; then
+  delta_opts=`cat $srcdir/delta_opts 2>/dev/null`
   cp $srcdir/delta_opts $dir/ 2>/dev/null
 fi
 
@@ -130,14 +135,38 @@ else
   fi
 fi
 
+lambdas="5 8 10 12 15 18 20 25"
+
 x=0
 while [ $x -lt $num_iters ]; do
   if [ $stage -le $x ]; then
-    rm $dir/.error 2>/dev/null
+    [ -f $dir/.error ] && rm $dir/.error 2>/dev/null
+
+    if [ $search_lambda == true ]; then
+      for lambda in $lambdas; do
+        $cmd $parallel_opts JOB=1:$nj $dir/log/lambda_cv.$x.cv$lambda.JOB.log \
+          ivector-extractor-cross-validation --lambda=$lambda --num-threads=4 --num-samples-for-weights=3 \
+          $dir/$x.ie "$feats" "ark,s,cs:gunzip -c $dir/post.JOB.gz|" &
+      done
+      wait
+
+      for lambda in $lambdas; do
+        grep 'Average' $dir/log/lambda_cv.$x.cv$lambda.[0-9]*.log | awk -v i=$lambda '{a+=exp($NF)} END{print "lambda ", i, "residue ", a}'
+      done
+      
+      best_lambda=$(for lambda in $lambdas; do
+        grep 'Average' $dir/log/lambda_cv.$x.cv$lambda.[0-9]*.log | awk -v i=$lambda '{a+=exp($NF)} END{print i,a}'
+      done | sort -k2 -n | head -1 | awk '{print $1}')
+
+      echo "Best lambda from cross validation is $best_lambda"
+
+    else
+      best_lambda=lambda
+    fi
 
     Args=() # bash array of training commands for 1:nj, that put accs to stdout.
     for j in $(seq $nj_full); do
-      Args[$j]=`echo "ivector-extractor-acc-stats --num-threads=$num_threads --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
+      Args[$j]=`echo "ivector-extractor-acc-stats --num-threads=$num_threads --lambda=$best_lambda --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
     done
 
     echo "Accumulating stats (pass $x)"
@@ -172,3 +201,5 @@ while [ $x -lt $num_iters ]; do
 done
 
 ln -s $x.ie $dir/final.ie
+
+}

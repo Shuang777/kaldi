@@ -16,6 +16,7 @@ posterior_scale=1.0 # This scale helps to control for successve features being h
                     # correlated.  E.g. try 0.1 or 0.3.
 vad=true
 add_delta=true
+lambda=1.0
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -73,7 +74,7 @@ if [ $stage -le 0 ]; then
     gmm-gselect --n=$num_gselect "$dubm" "$feats" ark:- \| \
     fgmm-global-gselect-to-post --min-post=$min_post $srcdir/final.ubm "$feats" \
        ark,s,cs:- ark:- \| scale-post ark:- $posterior_scale ark:- \| \
-    ivector-extract --verbose=2 $srcdir/final.ie "$feats" ark,s,cs:- \
+    ivector-extract --lambda=$lambda --verbose=2 $srcdir/final.ie "$feats" ark,s,cs:- \
       ark,scp,t:$dir/ivector.JOB.ark,$dir/ivector.JOB.scp || exit 1;
 fi
 
