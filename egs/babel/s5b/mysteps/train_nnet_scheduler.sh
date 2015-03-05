@@ -36,7 +36,8 @@ verbose=1
 train_tool="nnet-train-frmshuff"
 frame_weights=
 subnnet_ids=
-semi_layers=-1 
+semi_layers=-1
+updatable_layers=""
 
 # End configuration.
 
@@ -105,6 +106,7 @@ for iter in $(seq -w $max_iters); do
   $train_tool \
    --learn-rate=$learn_rate --momentum=$momentum --l1-penalty=$l1_penalty --l2-penalty=$l2_penalty \
    --minibatch-size=$minibatch_size --randomizer-size=$randomizer_size --randomize=true --verbose=$verbose \
+   --updatable-layers=$updatable_layers \
    --binary=true --semi-layers=$semi_layers $frame_weights_opt \
    ${feature_transform:+ --feature-transform=$feature_transform} \
    ${randomizer_seed:+ --randomizer-seed=$randomizer_seed} \

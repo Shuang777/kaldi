@@ -61,6 +61,7 @@ semitransdir=
 semi_layers=-1
 semi_cv=false   # also use semi data for cross-validation
 max_iters=20
+updatable_layers=""
 
 # End configuration.
 
@@ -372,6 +373,7 @@ mysteps/train_nnet_scheduler.sh \
   --resume-anneal $resume_anneal \
   --semi-layers $semi_layers \
   --max-iters $max_iters \
+  --updatable-layers "$updatable_layers" \
   ${train_opts} \
   ${train_tool:+ --train-tool "$train_tool"} \
   ${config:+ --config $config} \

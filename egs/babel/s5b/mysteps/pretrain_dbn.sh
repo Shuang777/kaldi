@@ -53,6 +53,7 @@ norm_vars=false    # When apply_cmvn=true, this enables CVN
 splice=5           # Temporal splicing
 splice_step=1      # Stepsize of the splicing (1 is consecutive splice, 
                    # value 2 would do [ -10 -8 -6 -4 -2 0 2 4 6 8 10 ] splicing)
+traps_dct_basis=11 # nr. od DCT basis (applies to `traps` feat_type, splice10 )
 semidata=
 semitransdir=
 # misc.
@@ -143,9 +144,11 @@ case $feat_type in
    ;;
   fmllr) feats="scp:$dir/shuffle.scp"
    ;;
+  traps) feats="scp:$dir/shuffle.scp"
+   ;;
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
-if [ -f $alidir/trans.1 ] && [ $feat_type != "raw" ]; then
+if [ -f $alidir/trans.1 ] && [ $feat_type == "lda" ]; then
   if [ -z $semitransdir ]; then
     echo "$0: using transforms from $alidir"
     feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/trans.*|' ark:- ark:- |"
@@ -208,6 +211,19 @@ else
     echo "Using splice +/- $splice , step $splice_step"
     feature_transform=$dir/tr_splice$splice-$splice_step.nnet
     utils/nnet/gen_splice.py --fea-dim=$feat_dim --splice=$splice --splice-step=$splice_step > $feature_transform
+    if [ $feat_type == traps ]; then
+      #generate hamming+dct transform
+      feature_transform_old=$feature_transform
+      feature_transform=$dir/hamm_dct${traps_dct_basis}.nnet
+      echo "Preparing Hamming DCT transform into : $feature_transform"
+      #prepare matrices with time-transposed hamming and dct
+      utils/nnet/gen_hamm_mat.py --fea-dim=$feat_dim --splice=$splice > $dir/hamm.mat
+      utils/nnet/gen_dct_mat.py --fea-dim=$feat_dim --splice=$splice --dct-basis=$traps_dct_basis > $dir/dct.mat
+      #put everything together
+      compose-transforms --binary=false $dir/dct.mat $dir/hamm.mat - | \
+        transf-to-nnet - - | \
+        nnet-concat --binary=false $feature_transform_old - $feature_transform || exit 1;
+    fi
   fi
 
   # Renormalize the MLP input to zero mean and unit variance

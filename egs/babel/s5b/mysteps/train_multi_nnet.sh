@@ -104,8 +104,7 @@ if [ ! -z $labels ]; then
   labels_tr="$labels"
   labels_cv="$labels"
 else
-  echo "We only support force label for now. please provide it by --labels"
-  exit 1;
+  # this is for multi softmax semi-supervised training
   echo "Using PDF targets from dirs '$alidir'"
   # define pdf-alignment rspecifiers
   labels_tr_ali="ark:ali-to-pdf $alidir/final.mdl \"ark:gunzip -c $alidir/ali.*.gz |\" ark:- |" # for analyze-counts.
