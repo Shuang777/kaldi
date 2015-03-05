@@ -160,6 +160,8 @@ class MultiNnet {
 
   /// Set training hyper-parameters to the network and its UpdatableComponent(s)
   void SetTrainOptions(const NnetTrainOptions& opts);
+  /// Set Layers to update during training
+  void SetUpdatables(std::vector<bool> updatables);
   /// Get training hyper-parameters from the network
   const NnetTrainOptions& GetTrainOptions() const {
     return opts_;

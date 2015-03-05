@@ -1177,5 +1177,31 @@ void MultiNnet::SetTrainOptions(const NnetTrainOptions& opts) {
   }
 }
 
+void MultiNnet::SetUpdatables(std::vector<bool> updatables) {
+  KALDI_ASSERT(NumInSubNnetComponents() + NumSharedComponents() + NumSubNnetComponents()  == updatables.size());
+  for (int i=0; i<NumInSubNnetComponents(); i++) {
+    for (int j=0; j<NumInSubNnets(); j++) {
+      if (in_sub_nnets_components_[j][i]->IsUpdatableLayer()) {
+        UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(in_sub_nnets_components_[j][i]);
+        uc->SetUpdatable(updatables[i]);
+      }
+    }
+  }
+  for (int i=0; i<NumSharedComponents(); i++) {
+    if (shared_components_[i]->IsUpdatableLayer()) {
+      UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(shared_components_[i]);
+      uc->SetUpdatable(updatables[i+NumInSubNnetComponents()]);
+    }
+  }
+  for (int i=0; i<NumSubNnetComponents(); i++) {
+    for (int j=0; j<NumSubNnets(); j++) {
+      if (sub_nnets_components_[j][i]->IsUpdatableLayer()) {
+        UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(sub_nnets_components_[j][i]);
+        uc->SetUpdatable(updatables[i+NumInSubNnetComponents()+NumSharedComponents()]);
+      }
+    }
+  }
+}
+
 } // namespace nnet1
 } // namespace kaldi

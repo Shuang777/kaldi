@@ -42,6 +42,11 @@ void SplitStringToVector(const std::string &full, const char *delim,
                          bool omit_empty_strings,
                          std::vector<std::string> *out);
 
+/// Split a string using str delim, return a vector of bool,
+/// The string may look like "false:true:false:false:true"
+void SplitStringToBoolVector(std::string s, const std::string delim,
+                             std::vector<bool> &out_bools);
+
 /// Joins the elements of a vector of strings into a single string using
 /// "delim" as the delimiter. If omit_empty_strings == true, any empty strings
 /// in the vector are skipped. A vector of empty strings results in an empty

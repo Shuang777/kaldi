@@ -71,6 +71,9 @@ int main(int argc, char *argv[]) {
     
     double dropout_retention = 0.0;
     po.Register("dropout-retention", &dropout_retention, "number between 0..1, saying how many neurons to preserve (0.0 will keep original value");
+    
+    std::string updatable_layers = "";
+    po.Register("updatable-layers", &updatable_layers, "Layers to update");
      
     
     po.Read(argc, argv);
@@ -108,6 +111,12 @@ int main(int argc, char *argv[]) {
     MultiNnet multi_nnet;
     multi_nnet.Read(model_filename);
     multi_nnet.SetTrainOptions(trn_opts);
+    
+    if (updatable_layers != "") {
+      std::vector<bool> updatable;
+      SplitStringToBoolVector(updatable_layers, ":", updatable);
+      multi_nnet.SetUpdatables(updatable);
+    }
 
     if (dropout_retention > 0.0) {
       nnet_transf.SetDropoutRetention(dropout_retention);

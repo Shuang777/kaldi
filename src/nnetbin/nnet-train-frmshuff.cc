@@ -24,31 +24,6 @@
 #include "base/timer.h"
 #include "cudamatrix/cu-device.h"
 
-std::vector<bool> ParseColonBool(std::string s) {
-  std::vector<bool> out_bools;
-
-  std::string s_copy = s;
-  std::string token;
-  size_t pos = 0;
-  while (!s.empty()) {
-    if ((pos = s.find(":")) != std::string::npos) {
-      token = s.substr(0, pos);
-    } else {
-      token = s;
-      pos = s.size()-1;
-    }
-    if (token == "false") {
-      out_bools.push_back(false);
-    } else if (token == "true") {
-      out_bools.push_back(true);
-    } else {
-      KALDI_ERR << "Unparsable string : " << s_copy;
-    }
-    s.erase(0, pos + 1);
-  }
-  
-  return out_bools;
-}
 
 int main(int argc, char *argv[]) {
   using namespace kaldi;
@@ -139,7 +114,8 @@ int main(int argc, char *argv[]) {
     nnet.Read(model_filename);
     nnet.SetTrainOptions(trn_opts);
     if (updatable_layers != "") {
-      std::vector<bool> updatable = ParseColonBool(updatable_layers);
+      std::vector<bool> updatable;
+      SplitStringToBoolVector(updatable_layers, ":", updatable);
       nnet.SetUpdatables(updatable);
     }
 

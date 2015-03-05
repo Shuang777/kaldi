@@ -72,6 +72,28 @@ void SplitStringToVector(const std::string &full, const char *delim,
   }
 }
 
+void SplitStringToBoolVector(std::string s, const std::string delim, std::vector<bool> & out_bools) {
+  std::string s_copy = s;
+  std::string token;
+  size_t pos = 0;
+  while (!s.empty()) {
+    if ((pos = s.find(delim)) != std::string::npos) {
+      token = s.substr(0, pos);
+    } else {
+      token = s;
+      pos = s.size()-1;
+    }
+    if (token == "false") {
+      out_bools.push_back(false);
+    } else if (token == "true") {
+      out_bools.push_back(true);
+    } else {
+      KALDI_ERR << "Unparsable string : " << s_copy;
+    }
+    s.erase(0, pos + 1);
+  }
+}
+
 void JoinVectorToString(const std::vector<std::string> &vec_in,
                         const char *delim, bool omit_empty_strings,
                         std::string *str_out) {
