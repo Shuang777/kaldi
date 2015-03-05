@@ -372,6 +372,10 @@
 /src/ivectorbin/ivector-subtract-global-mean
 /src/ivectorbin/ivector-transform
 /src/ivectorbin/select-voiced-frames
+/src/ivectorbin/ivector-extractor-copy
+/src/ivectorbin/ivector-extractor-cross-validation
+/src/ivectorbin/randomize-int-vector
+/src/ivectorbin/randomize-matrix
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk
