@@ -57,14 +57,14 @@ if [ ! -f $dnndir/.done ]; then
   echo "-----------------------------------------------------------------"
   if [ $semi == false ]; then
     $cuda_cmd $dnndir/train_nnet.log \
-    mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 data/${traindata} data/lang exp/${traindata}_tri5_ali $dnndir
+    mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 data/${traindata} g exp/${traindata}_tri5_ali $dnndir
   else
     $cuda_cmd $dnndir/train_nnet.log \
     mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn \
       --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 --semidata data/unsup_pem_${feattype} \
       --semitransdir exp/${traindata}_tri5/decode_unsup_pem_${feattype} \
       --semialidir exp/${traindata}_tri6_nnet/decode_unsup_pem_${feattype} \
-      data/${traindata} data/lang exp/${traindata}_tri5_ali $dnndir
+      data/${traindata} g exp/${traindata}_tri5_ali $dnndir
   fi
   touch $dnndir/.done
 fi
@@ -76,7 +76,7 @@ if [ ! -f $alidir/.done ]; then
   echo "-----------------------------------------------------------------"
   echo "Begin aligning training data in $alidir on" `date`
   echo "-----------------------------------------------------------------"
-  mysteps/align_nnet.sh --nj $train_nj --cmd "$train_cmd" --transform-dir exp/${traindata}_tri5_ali data/${traindata} data/lang $dnndir $alidir
+  mysteps/align_nnet.sh --nj $train_nj --cmd "$train_cmd" --transform-dir exp/${traindata}_tri5_ali data/${traindata} g $dnndir $alidir
   touch $alidir/.done
 fi
 fi
@@ -90,11 +90,11 @@ if [ ! -f $dnnredir/.done ]; then
   echo "-----------------------------------------------------------------"
   if [ $semi == false ]; then
     #$cuda_cmd $dnnredir/train_nnet.log \
-    #mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 data/${traindata} data/lang $alidir $dnnredir
+    #mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 data/${traindata} g $alidir $dnnredir
     $cuda_cmd $dnnredir/train_nnet.log \
-    mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --mlp-init $dnndir/final.nnet --hid-layers 0 --learn-rate 0.0008 --cv-subset-factor 0.1 data/${traindata} data/lang $alidir $dnnredir
+    mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --mlp-init $dnndir/final.nnet --hid-layers 0 --learn-rate 0.0008 --cv-subset-factor 0.1 data/${traindata} g $alidir $dnnredir
   else
-    mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5/decode_unsup_pem_${feattype} --semialidir $dnnredir/decode_unsup_pem_${feattype} --supcopy 3 data/${traindata} data/lang $aliredir $dnnredir
+    mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5/decode_unsup_pem_${feattype} --semialidir $dnnredir/decode_unsup_pem_${feattype} --supcopy 3 data/${traindata} g $aliredir $dnnredir
   fi
   touch $dnnredir/.done
 fi
@@ -104,7 +104,7 @@ if [ ! -f $aliredir/.done ]; then
   echo "-----------------------------------------------------------------"
   echo "Begin aligning training data in $aliredir on" `date`
   echo "-----------------------------------------------------------------"
-  mysteps/align_nnet.sh --nj $train_nj --cmd "$train_cmd" --transform-dir exp/${traindata}_tri5_ali data/${traindata} data/lang $dnnredir $aliredir
+  mysteps/align_nnet.sh --nj $train_nj --cmd "$train_cmd" --transform-dir exp/${traindata}_tri5_ali data/${traindata} g $dnnredir $aliredir
   touch $aliredir/.done
 fi
 
@@ -115,7 +115,7 @@ if [ ! -f $denlatsdir/.done ]; then
   echo "-----------------------------------------------------------------"
   echo "Begin making denlats for training data in $denlatsdir on" `date`
   echo "-----------------------------------------------------------------"
-  mysteps/make_denlats_nnet.sh --nj $train_nj --cmd "$train_cmd" --beam 13 --lattice-beam 8 --acwt 0.0833 --transform-dir exp/${traindata}_tri5_ali data/${traindata} data/lang exp/${traindata}_tri8_dnn $denlatsdir
+  mysteps/make_denlats_nnet.sh --nj $train_nj --cmd "$train_cmd" --beam 13 --lattice-beam 8 --acwt 0.0833 --transform-dir exp/${traindata}_tri5_ali data/${traindata} g exp/${traindata}_tri8_dnn $denlatsdir
   touch $denlatsdir/.done
 fi
 
@@ -124,7 +124,7 @@ if [ ! -f $smbrdir/.done ]; then
   echo "-----------------------------------------------------------------"
   echo "Begin smbr training on training data in $denlatsdir on" `date`
   echo "-----------------------------------------------------------------"
-  mysteps/train_nnet_mpe.sh --cmd utils/run.pl --num-iters 1 --acwt 0.0833 --do-smbr true --scp_splits 20 --transform-dir exp/${traindata}_tri5_ali data/${traindata} data/lang $dnndir $alidir $denlatsdir $smbrdir
+  mysteps/train_nnet_mpe.sh --cmd utils/run.pl --num-iters 1 --acwt 0.0833 --do-smbr true --scp_splits 20 --transform-dir exp/${traindata}_tri5_ali data/${traindata} g $dnndir $alidir $denlatsdir $smbrdir
   touch $smbrdir/.done
 fi
 
@@ -134,6 +134,6 @@ echo "-----------------------------------------------------------------"
 
 exit 0;
 
-mysteps/train_nnet_mmi.sh --cmd utils/run.pl --num-iters 1 --acwt 0.0833 --transform-dir exp/train_plp_pitch_tri5_ali data/train_plp_pitch data/lang exp/train_plp_pitch_tri8_dnn exp/train_plp_pitch_tri8_dnn_ali exp/train_plp_pitch_tri8_dnn_denlats exp/train_plp_pitch_tri8_dnn_mmi
+mysteps/train_nnet_mmi.sh --cmd utils/run.pl --num-iters 1 --acwt 0.0833 --transform-dir exp/train_plp_pitch_tri5_ali data/train_plp_pitch g exp/train_plp_pitch_tri8_dnn exp/train_plp_pitch_tri8_dnn_ali exp/train_plp_pitch_tri8_dnn_denlats exp/train_plp_pitch_tri8_dnn_mmi
 
 }
