@@ -62,7 +62,7 @@ foreach $line (@lines) {
 }
 
 if ($ret != 0) {
-  $njobs = $jobend - $jobstart + 1;
+  $njobs = @line;
   if ($njobs == 1) { 
     print STDERR "slurm.pl: job failed, log is in $logfile\n";
     if ($logfile =~ m/JOB/) {

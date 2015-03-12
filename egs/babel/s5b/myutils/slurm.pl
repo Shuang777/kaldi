@@ -54,7 +54,7 @@ if (@ARGV > 0) {
         $thisspec = shift @specifics;
         @argdetail = split(/=/, $thisspec);
         if ($argdetail[0] eq 'gpu') {
-          $gpuarg = "--gres=gpu:$argdetail[1] -x squid[1-9] -x cuttlefish[1-2]";
+          $gpuarg = "--gres=gpu:$argdetail[1] -x squid[1-9]";
         } elsif ($argdetail[0] eq 'mem_free') {
           $memnumber = $argdetail[1];
           if ($memnumber =~ /^(\d+)\.?(\d*)G$/){

@@ -52,6 +52,7 @@ my @values = ();
 my $iter = 0;
 while ($iter < $max_iter) {
   my @new_keys = &get_new_keys(\@values);
+  print "new keys to try @new_keys\n";
   my @new_values = ();
   share(@new_values);
   my @t;

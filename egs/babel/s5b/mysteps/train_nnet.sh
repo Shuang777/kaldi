@@ -70,7 +70,7 @@ echo "$0 $@"  # Print the command line for logging
 . path.sh || exit 1;
 . parse_options.sh || exit 1;
 
-if [ $# != 4 ]; then
+if [ $# != 3 ]; then
    echo "Usage: $0 <data-dir> <ali-dir> <exp-dir>"
    echo " e.g.: $0 data/train exp/mono_ali exp/mono_nnet"
    echo "main options (for others, see top of script file)"

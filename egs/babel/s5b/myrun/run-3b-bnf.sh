@@ -25,13 +25,13 @@ if [ ! -f $dir/.done ]; then
   if [ $semi == false ]; then
     $cuda_cmd $dir/train_nnet.log \
     mysteps/train_nnet.sh --hid-layers 2 --hid-dim 1200 --bn-dim 80 --learn-rate 0.002 --cv-subset-factor 0.1 --feat-type "$nnetfeattype" \
-      data/$traindata data/lang${langext} exp/${traindata}_tri5_ali${langext} $dir || exit 1;
+      data/$traindata exp/${traindata}_tri5_ali${langext} $dir || exit 1;
   else
     $cuda_cmd $dir/train_nnet.log \
     mysteps/train_nnet.sh --hid-layers 2 --hid-dim 1200 --bn-dim 80 --learn-rate 0.002 --cv-subset-factor 0.1 \
       --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5${langext}/decode_unsup_pem_${feattype} \
       --semialidir exp/${traindata}_tri6_nnet${langext}/decode_unsup_pem_${feattype} \
-      data/$traindata data/lang${langext} exp/${traindata}_tri5_ali${langext} $dir || exit 1;
+      data/$traindata exp/${traindata}_tri5_ali${langext} $dir || exit 1;
   fi
   touch $dir/.done
 fi
@@ -55,13 +55,13 @@ if [ ! -f $dir/.done ]; then
   if [ $semi == false ]; then
     $cuda_cmd $dir/train_nnet.log \
     mysteps/train_nnet.sh --hid-layers 2 --hid-dim 1200 --bn-dim 30 --feature-transform $feature_transform --learn-rate 0.002 --cv-subset-factor 0.1 --feat-type "$nnetfeattype" \
-      data/$traindata data/lang${langext} exp/${traindata}_tri5_ali${langext} $dir || exit 1;
+      data/$traindata exp/${traindata}_tri5_ali${langext} $dir || exit 1;
   else
     $cuda_cmd $dir/train_nnet.log \
     mysteps/train_nnet.sh --hid-layers 2 --hid-dim 1200 --bn-dim 30 --feature-transform $feature_transform --learn-rate 0.002 --cv-subset-factor 0.1 \
       --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5${langext}/decode_unsup_pem_${feattype} \
       --semialidir exp/${traindata}_tri6_nnet${langext}/decode_unsup_pem_${feattype} \
-      data/$traindata data/lang exp/${traindata}_tri5_ali${langext} $dir || exit 1;
+      data/$traindata exp/${traindata}_tri5_ali${langext} $dir || exit 1;
   fi
   touch $dir/.done
 fi

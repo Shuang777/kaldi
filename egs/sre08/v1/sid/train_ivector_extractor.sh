@@ -135,28 +135,16 @@ else
   fi
 fi
 
-lambdas="5 8 10 12 15 18 20 25"
-
 x=0
 while [ $x -lt $num_iters ]; do
   if [ $stage -le $x ]; then
     [ -f $dir/.error ] && rm $dir/.error 2>/dev/null
 
     if [ $search_lambda == true ]; then
-      for lambda in $lambdas; do
-        $cmd $parallel_opts JOB=1:$nj $dir/log/lambda_cv.$x.cv$lambda.JOB.log \
-          ivector-extractor-cross-validation --lambda=$lambda --num-threads=4 --num-samples-for-weights=3 \
-          $dir/$x.ie "$feats" "ark,s,cs:gunzip -c $dir/post.JOB.gz|" &
-      done
-      wait
+      echo "Start searching for lambda"
+      myutils/search.pl "$cmd $parallel_opts JOB=1:$nj $dir/log/lambda_cv.$x.cv#0.JOB.log ivector-extractor-cross-validation --lambda=#0 --num-threads=4 --num-samples-for-weights=3 $dir/$x.ie \"$feats\" \"ark,s,cs:gunzip -c $dir/post.JOB.gz|\" &> $dir/log/lambda_cv.$x.err.log && grep Average $dir/log/lambda_cv.$x.cv#0.[0-9]*.log | awk '{a+=exp(\$NF)} END{printf \"%f\",a}'" | tee $dir/log/search.$x.log
 
-      for lambda in $lambdas; do
-        grep 'Average' $dir/log/lambda_cv.$x.cv$lambda.[0-9]*.log | awk -v i=$lambda '{a+=exp($NF)} END{print "lambda ", i, "residue ", a}'
-      done
-      
-      best_lambda=$(for lambda in $lambdas; do
-        grep 'Average' $dir/log/lambda_cv.$x.cv$lambda.[0-9]*.log | awk -v i=$lambda '{a+=exp($NF)} END{print i,a}'
-      done | sort -k2 -n | head -1 | awk '{print $1}')
+      best_lambda=$(tail -n 1 $dir/log/search.$x.log | awk '{print $3}')
 
       echo "Best lambda from cross validation is $best_lambda"
 

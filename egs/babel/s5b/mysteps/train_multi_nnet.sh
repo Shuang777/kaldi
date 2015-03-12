@@ -81,7 +81,7 @@ alidir=$2
 dir=$3
 
 
-for f in $alidir/frame_subnnet_ids.ark $alidir/post.info $alidir/label.posts $data/feats.scp; do
+for f in $alidir/frame_subnnet_ids.ark $alidir/post.info $data/feats.scp; do
   [ ! -f $f ] && echo "$0: no such file $f" && exit 1;
 done
 
@@ -166,11 +166,6 @@ fi
 echo
 echo "# PREPARING FEATURES"
 #read the features
-if [ "$feat_type" != "fmllr" ]; then
-  echo "We only support fmllr type feature (please make fmllr beforehand)"
-  exit 1;
-fi
-
 if [ -z $feat_type ]; then
   if [ -f $alidir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
   echo "$0: feature type is $feat_type"
