@@ -36,9 +36,9 @@ int main(int argc, char *argv[]) {
     const char *usage =
         "Perform forwardback pass through Multi Neural Network.\n"
         "\n"
-        "Usage:  multi-nnet-propagate [options] <model-in> <feature-rspecifier-1> ... <targets-rspecifier> <subnnet-ids-rspecifier> <feature-wspecifier>\n"
+        "Usage:  multi-nnet-propagate [options] <model-in> <feature-rspecifier-1> ... <targets-rspecifier> <feature-wspecifier>\n"
         "e.g.: \n"
-        " multi-nnet-propagate multi_nnet ark:features.ark ark:mlpoutput.ark\n";
+        " multi-nnet-propagate multi_nnet ark:features1.ark ... ark:mlpoutput.ark\n";
 
     ParseOptions po(usage);
 
@@ -63,12 +63,12 @@ int main(int argc, char *argv[]) {
       exit(1);
     }
 
-    std::string model_filename = po.GetArg(1),
+    std::string model_filename = po.GetArg(1);
     std::vector<std::string> feature_rspecifiers;
     for (int i=2; i<po.NumArgs(); i++) {
       feature_rspecifiers.push_back(po.GetArg(i));
     }
-    std::string feature_wspecifier = po.GetArg(3);
+    std::string feature_wspecifier = po.GetArg(po.NumArgs());
     const int num_features = feature_rspecifiers.size();
 
     //Select the GPU
@@ -83,7 +83,10 @@ int main(int argc, char *argv[]) {
         nnet_transfs[0].Read(feature_transform);
       } else {
         for (int32 i=0; i<num_features; i++) {
-          nnet_transfs[i].Read(feature_transform+"."+patch::to_string(i));
+          char intStr[5];
+          sprintf (intStr, "%d", i);
+          string str = string(intStr);
+          nnet_transfs[i].Read(feature_transform+"."+str);
         }
       }
     }
@@ -126,35 +129,48 @@ int main(int argc, char *argv[]) {
     }
     BaseFloatMatrixWriter feature_writer(feature_wspecifier);
 
-    CuMatrix<BaseFloat> feats(num_features);
+    std::vector<CuMatrix<BaseFloat> > feats(num_features);
     std::vector<CuMatrix<BaseFloat> *> feats_transfs(num_features);
+    for (int32 i=0; i<num_features; i++) {
+      feats_transfs[i] = new CuMatrix<BaseFloat>();
+    }
     std::vector<CuMatrix<BaseFloat> *> nnet_out;
     std::vector<CuMatrixBase<BaseFloat> *> nnet_out_base;
     std::vector<CuMatrix<BaseFloat> *> obj_diff;
     std::vector<Matrix<BaseFloat> > obj_diff_host;
+    Matrix<BaseFloat> nnet_out_host;
 
     Timer time;
     double time_now = 0;
     int32 num_done = 0;
     // iterate over all feature files
-    while (true)
+    while (true) {
       // read
+      std::string feat_key;
       for (int32 i=0; i<num_features; i++) {
         const Matrix<BaseFloat> &mat = feature_readers[i].Value();
+        if (i == 0) {
+          feat_key = feature_readers[i].Key();
+        } else {
+          if (feature_readers[i].Key() != feat_key) {
+            KALDI_ERR << "Utterance key " << feature_readers[i].Key() << " does not match that in feature-rspecifier=1 " << feat_key;
+          }
+        }
+
         KALDI_VLOG(2) << "Processing utterance " << num_done+1 
-                      << ", " << feature_reader.Key() 
+                      << ", " << feature_readers[i].Key() 
                       << ", " << mat.NumRows() << "frm";
 
         //check for NaN/inf
         BaseFloat sum = mat.Sum();
         if (!KALDI_ISFINITE(sum)) {
-          KALDI_ERR << "NaN or inf found in features of " << feature_reader.Key();
+          KALDI_ERR << "NaN or inf found in features of " << feature_readers[i].Key();
         }
       
         // push it to gpu
         feats[i] = mat;
         // fwd-pass
-        nnet_transfs[i].Feedforward(feats[i], &feats_transfs[i]);
+        nnet_transfs[i].Feedforward(feats[i], feats_transfs[i]);
       }
       multi_nnet.Propagate(feats_transfs, nnet_out);
       
@@ -174,25 +190,25 @@ int main(int argc, char *argv[]) {
      
       for (int32 i=0; i<nnet_out.size(); i++) {
         nnet_out_base.push_back(dynamic_cast<CuMatrixBase<BaseFloat> *>(nnet_out[i]));
-      }
-      multi_nnet.Backpropagate(nnet_out_base, &nnet_backout);
 
-      //download from GPU
-      nnet_backout_host.Resize(nnet_backout.NumRows(), nnet_backout.NumCols());
-      nnet_backout.CopyToMat(&nnet_backout_host);
+        //download from GPU
+        nnet_out_host.Resize(nnet_out[i]->NumRows(), nnet_out_base[i]->NumCols());
+        nnet_out_base[i]->CopyToMat(&nnet_out_host);
 
-      //check for NaN/inf
-      for (int32 r = 0; r < nnet_backout_host.NumRows(); r++) {
-        for (int32 c = 0; c < nnet_backout_host.NumCols(); c++) {
-          BaseFloat val = nnet_backout_host(r,c);
-          if (val != val) KALDI_ERR << "NaN in NNet output of : " << feature_reader.Key();
-          if (val == std::numeric_limits<BaseFloat>::infinity())
-            KALDI_ERR << "inf in NNet coutput of : " << feature_reader.Key();
+        //check for NaN/inf
+        for (int32 r = 0; r < nnet_out_host.NumRows(); r++) {
+          for (int32 c = 0; c < nnet_out_host.NumCols(); c++) {
+            BaseFloat val = nnet_out_host(r,c);
+            if (val != val) KALDI_ERR << "NaN in NNet output of : " << feature_readers[0].Key();
+            if (val == std::numeric_limits<BaseFloat>::infinity())
+              KALDI_ERR << "inf in NNet coutput of : " << feature_readers[0].Key();
+          }
         }
-      }
 
-      // write
-      feature_writer.Write(feature_reader.Key(), nnet_backout_host);
+        // write
+        feature_writer.Write(feature_readers[0].Key(), nnet_out_host);
+
+      }
 
       // progress log
       if (num_done % 100 == 0) {
@@ -202,7 +218,15 @@ int main(int argc, char *argv[]) {
                       << " frames per second.";
       }
       num_done++;
-      tot_t += mat.NumRows();
+      tot_t += nnet_out_host.NumRows();
+
+      for (int32 i=0; i<num_features; i++) {
+        feature_readers[i].Next();
+      }
+
+      if (feature_readers.front().Done()) {
+        break;
+      }
     }
     
     // final message
