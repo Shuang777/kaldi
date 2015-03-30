@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
     KALDI_LOG << "Done " << num_done << " files, " << num_err
               << " with errors.  Total frames " << tot_t;
     
-    KALDI_LOG << "Average residue is " << stats.AvgLogResidue();
+    KALDI_LOG << "Average log residue is " << stats.AvgLogResidue();
     
     return (num_done != 0 ? 0 : 1);
   } catch(const std::exception &e) {

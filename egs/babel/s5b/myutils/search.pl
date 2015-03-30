@@ -7,7 +7,7 @@ use Storable qw(dclone);
 
 my $start_key1 = 0.1;
 my $start_key2 = 1;
-my $max_iter = 5;
+my $max_iter = 6;
 
 sub get_new_keys {
   my @values = @{$_[0]};
@@ -46,7 +46,10 @@ sub runfunc {
   $$value = `$cmd`;
 }
 
+print $0 . " ". (join " ", @ARGV) . "\n";
+
 my $cmd = $ARGV[0];
+
 my @values = ();
 
 my $iter = 0;
@@ -65,6 +68,7 @@ while ($iter < $max_iter) {
   for my $i (0..$#new_keys) {
     $t[$i]->join();
     push @values, [ ($new_keys[$i], $new_values[$i]) ];
+    print "key $new_keys[$i]\t value $new_values[$i]\n";
   }
   @values = sort {$a->[1] <=> $b->[1]} @values;
   print "best key $values[0][0] value $values[0][1]\n";

@@ -17,7 +17,8 @@ BINFILES = ivector-extractor-init ivector-extractor-acc-stats \
            ivector-extract-online ivector-adapt-plda \
 					 ivector-extractor-copy \
 					 ivector-extractor-cross-validation \
-					 randomize-matrix randomize-int-vector
+					 randomize-matrix randomize-int-vector \
+					 ivector-check-condition-number
 
 OBJFILES =
 

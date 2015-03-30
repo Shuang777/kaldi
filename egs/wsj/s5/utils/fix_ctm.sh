@@ -16,7 +16,7 @@ if [ "$segments_stm_count" -gt "$segments_ctm_count"  ] ; then
   pp=$( diff <(echo "$segments_stm") <(echo "$segments_ctm" ) | grep "^<" | sed "s/^< *//g")
   (
     for elem in $pp ; do
-      echo "$elem 1 0 0 EMPTY_RECOGNIZED_PHRASE"
+      echo "$elem A 0 0 EMPTY_RECOGNIZED_PHRASE"
     done
   ) >> $ctmfile
   echo "FIXED CTM FILE"

@@ -48,6 +48,7 @@ add_delta=true
 lambda=1.0
 subsample=1
 search_lambda=false
+compute_auxf=true
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -141,8 +142,14 @@ while [ $x -lt $num_iters ]; do
     [ -f $dir/.error ] && rm $dir/.error 2>/dev/null
 
     if [ $search_lambda == true ]; then
-      echo "Start searching for lambda"
-      myutils/search.pl "$cmd $parallel_opts JOB=1:$nj $dir/log/lambda_cv.$x.cv#0.JOB.log ivector-extractor-cross-validation --lambda=#0 --num-threads=4 --num-samples-for-weights=3 $dir/$x.ie \"$feats\" \"ark,s,cs:gunzip -c $dir/post.JOB.gz|\" &> $dir/log/lambda_cv.$x.err.log && grep Average $dir/log/lambda_cv.$x.cv#0.[0-9]*.log | awk '{a+=exp(\$NF)} END{printf \"%f\",a}'" | tee $dir/log/search.$x.log
+      if [ -f $dir/.done.search.$x ]; then
+        echo "lambda search done for iteration $x"
+        cat $dir/log/search.$x.log
+      else 
+        echo "Start searching for lambda"
+        myutils/search.pl "$cmd $parallel_opts JOB=1:$nj $dir/log/lambda_cv.$x.cv#0.JOB.log ivector-extractor-cross-validation --lambda=#0 --num-threads=4 --num-samples-for-weights=3 $dir/$x.ie \"$feats\" \"ark,s,cs:gunzip -c $dir/post.JOB.gz|\" &> $dir/log/lambda_cv.$x.err.log && grep Average $dir/log/lambda_cv.$x.cv#0.[0-9]*.log | awk '{a+=exp(\$NF)} END{printf \"%f\",a}'" | tee $dir/log/search.$x.log
+        touch $dir/.done.search.$x
+      fi
 
       best_lambda=$(tail -n 1 $dir/log/search.$x.log | awk '{print $3}')
 
@@ -154,7 +161,7 @@ while [ $x -lt $num_iters ]; do
 
     Args=() # bash array of training commands for 1:nj, that put accs to stdout.
     for j in $(seq $nj_full); do
-      Args[$j]=`echo "ivector-extractor-acc-stats --num-threads=$num_threads --lambda=$best_lambda --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
+      Args[$j]=`echo "ivector-extractor-acc-stats --num-threads=$num_threads --compute-auxf=$compute_auxf --lambda=$best_lambda --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
     done
 
     echo "Accumulating stats (pass $x)"

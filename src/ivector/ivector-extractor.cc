@@ -132,6 +132,30 @@ void IvectorExtractor::GetIvectorDistribution(
   }
 }
 
+void IvectorExtractor::GetIvectorMinMaxEigenvalue(
+    const IvectorExtractorUtteranceStats &utt_stats,
+    double &min_eig_val,
+    double &max_eig_val,
+    const double lambda /*= 1.0*/) const {
+  if (!IvectorDependentWeights()) {
+    Vector<double> linear(IvectorDim());
+    SpMatrix<double> quadratic(IvectorDim());
+    GetIvectorDistMean(utt_stats, &linear, &quadratic);
+    GetIvectorDistPrior(utt_stats, &linear, &quadratic, lambda);
+    Vector<double> s(quadratic.NumRows());
+    quadratic.Eig(&s, NULL);
+    min_eig_val = std::abs(s(0));
+    max_eig_val = std::abs(s(0));
+    for (MatrixIndexT d = 0; d < s.Dim(); d++) {
+      double val = std::abs(s(d));
+      min_eig_val = std::min(min_eig_val, val);
+      max_eig_val = std::max(max_eig_val, val);
+    }
+  } else {
+    KALDI_ERR << "We don't support IvectorDependentWeights for now";
+  }
+}
+
 double IvectorExtractor::GetResidue(
     const IvectorExtractorUtteranceStats &utt_stats,
     VectorBase<double> *mean,
@@ -140,27 +164,23 @@ double IvectorExtractor::GetResidue(
     
   int32 I = NumGauss();
   double residue = 0;
+  Vector<double> estimates(FeatDim());
+  Vector<double> residue_buffer(FeatDim());
+
+  double norm = mean->Norm(2.0);
+  residue += lambda * norm * norm;
+
   for (int32 i = 0; i < I; i++) {
     double gamma = utt_stats.gamma_(i);
-    Vector<double> estimates(FeatDim());
-
-    double norm = mean->Norm(2.0);
-
-    residue += lambda * norm * norm;
-
-    Vector<double> x(utt_stats.X_.Row(i)); // == \gamma(i) \m_i
-    
     if (gamma != 0.0) {
-      x.Scale(1.0/gamma);   // == \m_i
+      estimates.CopyRowFromMat(utt_stats.X_, i); // = \gamma(i) \m_i
+      estimates.AddMatVec(-1.0, M_[i], kNoTrans, *mean, 1.0/gamma);    // = m_i - M * y(means)
+
+      residue_buffer.AddSpVec(gamma, Sigma_inv_[i], estimates, 0.0);  // = gamma * sigma_inv * (m_i - M * y)
+      residue_buffer.MulElements(estimates); // = (m_i - M * y)  .* (W * (m_i - M * y))
+
+      residue += residue_buffer.Sum();
     }
-
-    estimates.AddMatVec(1.0, M_[i], kNoTrans, *mean, 1.0);
-
-    estimates.AddVec(-1.0, x);
-
-    norm = estimates.Norm(2.0);
-
-    residue += norm * norm;
   }
   return residue;
 }
@@ -1674,6 +1694,8 @@ void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extra
     int32 ivector_dim = extractor.IvectorDim();
     Vector<double> ivec_mean(ivector_dim);
     SpMatrix<double> ivec_var(ivector_dim);
+
+    ivec_mean(0) = extractor.PriorOffset();
 
     extractor.GetIvectorDistribution(utt_stats,
                                      &ivec_mean,

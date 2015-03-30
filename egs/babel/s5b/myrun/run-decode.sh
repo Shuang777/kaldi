@@ -31,9 +31,10 @@ sgmm=false
 nnet=false
 dnn=true
 dnndir=
+dnnfeattype=
 smbr=false
 sgmmmmi=false
-skip_convert=false
+skip_convert=true
 Gorder=
 boost=
 # End of configuration.
@@ -208,20 +209,20 @@ fi
 
 if [ $dnn == true ]; then
 
-[ -z $dnndir ] && dnndir=${traindata}_tri8_dnn${trainlangext}
-echo "Waiting till exp/${dnndir}/final.mdl exists...."
-while [ -d $dnndir ] && [ ! -f exp/${dnndir}/final.mdl ]; do sleep 30; done
-echo "...done waiting for exp/${dnndir}/final.mdl"
-decode=exp/${dnndir}/decode_${typedata}${langext}${acwtext}${beamext}
-if [ -d exp/$dnndir ] && [[ ! -f $decode/.done || ! -f $decode/.done.score ]]; then
+[ -z $dnndir ] && dnndir=exp/${traindata}_tri8_dnn${trainlangext}
+echo "Waiting till ${dnndir}/final.mdl exists...."
+while [ -d $dnndir ] && [ ! -f ${dnndir}/final.mdl ]; do sleep 30; done
+echo "...done waiting for ${dnndir}/final.mdl"
+decode=${dnndir}/decode_${typedata}${langext}${acwtext}${beamext}
+if [ -d $dnndir ] && [[ ! -f $decode/.done || ! -f $decode/.done.score ]]; then
   echo ---------------------------------------------------------------------
   echo "Starting $decode on" `date`
   echo ---------------------------------------------------------------------
 
   [ ! -f $decode/.done ] && dnnstage=0 || dnnstage=1      # do decode if not done, do scoring depend on skip-scoring otherwise
   [[ $typedata =~ "semi_fmllr" ]] && $feattype_opt="--feat-type fmllr"
-  mysteps/decode_nnet.sh --cmd "$decode_cmd -l mem_free=4G" --nj $type_nj --latbeam $dnnlatbeam --acwt 0.0833 \
-    --scoring-opts "--min-lmwt 10 --max-lmwt 16 --wip 0.2" --stage $dnnstage $feattype_opt \
+  mysteps/decode_nnet.sh --cmd "$decode_cmd -l mem_free=6G" --nj $type_nj --latbeam $dnnlatbeam --acwt 0.0833 \
+    --scoring-opts "--min-lmwt 6 --max-lmwt 16 --wip 0.2" --stage $dnnstage $feattype_opt --feat-type "$dnnfeattype" \
     --transform-dir exp/${traindata}_tri5${trainlangext}/decode_${typedata}${langext}${acwtext} --skip-scoring $skip_scoring \
     exp/${traindata}_tri5${trainlangext}/graph${langext} data/$typedata $decode
   touch $decode/.done

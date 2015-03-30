@@ -141,6 +141,12 @@ class IvectorExtractor {
       SpMatrix<double> *var,
       const double lambda = 1.0) const;
 
+  void GetIvectorMinMaxEigenvalue(
+      const IvectorExtractorUtteranceStats &utt_stats,
+      double &min_eig_val, 
+      double &max_eig_val,
+      const double lambda = 1.0) const;
+
   /// Get residue from regression
   double GetResidue (const IvectorExtractorUtteranceStats &utt_stats,
                      VectorBase<double> *mean,
