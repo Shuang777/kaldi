@@ -376,6 +376,7 @@
 /src/ivectorbin/ivector-extractor-cross-validation
 /src/ivectorbin/randomize-int-vector
 /src/ivectorbin/randomize-matrix
+/src/ivectorbin/ivector-check-condition-number
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk

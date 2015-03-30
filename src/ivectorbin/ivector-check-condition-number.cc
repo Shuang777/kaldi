@@ -50,7 +50,7 @@ class IvectorGetMinMaxEigTask {
     extractor_.GetIvectorMinMaxEigenvalue(utt_stats, min_eig_, max_eig_, lambda_);
   }
   ~IvectorGetMinMaxEigTask() {
-    KALDI_LOG << "Ivector matrix V^T*W*V min eig value " << min_eig_ << " , max eig value "
+    KALDI_LOG << "Ivector matrix V^T*W*V for utt "<< utt_ << " min eig value " << min_eig_ << " , max eig value "
               << max_eig_ << " , condition number " << max_eig_/min_eig_ << ".";
   }
  private:
