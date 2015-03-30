@@ -49,9 +49,9 @@ class MultiNnet {
   /// Perform forward pass through the network with mutliple input
   void Propagate(const std::vector<CuMatrix<BaseFloat> *> &in, std::vector<CuMatrix<BaseFloat> *> &out); 
   /// Perform backward pass through the network
-  void Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_diff, CuMatrix<BaseFloat> *in_diff);
+  void Backpropagate(const std::vector<CuMatrix<BaseFloat> *> &out_diff, CuMatrix<BaseFloat> *in_diff);
   /// Perform backward pass through the network (with in_sub_nnets)
-  void Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_diff);
+  void Backpropagate(const std::vector<CuMatrix<BaseFloat> *> &out_diff, std::vector<CuMatrix<BaseFloat> *> &in_diff);
   /// Perform forward pass through the network, don't keep buffers (use it when not training)
   void Feedforward(const CuMatrixBase<BaseFloat> &in, const int32 subnnet_id, CuMatrix<BaseFloat> *out); 
   /// Perform forward pass through the network, don't keep buffers (use it when not training)

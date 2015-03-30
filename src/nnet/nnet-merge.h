@@ -59,6 +59,9 @@ class BlockAddComponent : public Component {
                         const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff,
                         std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    for (int32 i=0; i<in.size(); i++) {
+      in_diff[i].back().AddMat(1.0, out_diff);
+    }
   }
 };
 

@@ -18,7 +18,8 @@ BINFILES = nnet-train-frmshuff \
 				multi-nnet-to-nnet nnet-to-multi-nnet \
 				multi-nnet-add-subnnet multi-nnet-forward \
 				multi-nnet-train-frmshuff multi-nnet-split \
-				multi-nnet-add-subnnet-front multi-nnet-propagate
+				multi-nnet-add-subnnet-front multi-nnet-propagate \
+				multi-nnet-propagateback
 
 OBJFILES =
 

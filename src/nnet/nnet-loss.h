@@ -43,7 +43,7 @@ class Xent {
   void Eval(const CuMatrixBase<BaseFloat> &net_out, const Posterior &target,
             CuMatrix<BaseFloat> *diff);
   /// Evaluate cross entropy from posteriors
-  void Eval(const std::vector<CuMatrixBase<BaseFloat> *> &net_outs, const Posterior &target,
+  void Eval(const std::vector<CuMatrix<BaseFloat> *> &net_outs, const Posterior &target,
             const std::vector<int32> &subnnet_ids, std::vector<CuMatrix<BaseFloat> *> &diffs);
   /// Evaluate cross entropy from soft labels
   void EvalVec(const CuMatrixBase<BaseFloat> &net_out, const std::vector<int32> &target,

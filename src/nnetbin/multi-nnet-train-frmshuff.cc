@@ -152,7 +152,6 @@ int main(int argc, char *argv[]) {
     for (int32 i=0; i<multi_nnet.NumSubNnets(); i++) {
       obj_diff[i] = new CuMatrix<BaseFloat>();
     }
-    std::vector<CuMatrixBase<BaseFloat> *> nnet_out_base, obj_diff_base;
 
     Timer time;
     KALDI_LOG << (crossvalidate?"CROSS-VALIDATION":"TRAINING") << " STARTED";
@@ -261,14 +260,10 @@ int main(int argc, char *argv[]) {
 
         // forward pass
         multi_nnet.Propagate(nnet_in, nnet_out);
-        nnet_out_base.resize(nnet_out.size());
-        for (int32 i=0; i<nnet_out.size(); i++) {
-          nnet_out_base[i] = dynamic_cast<CuMatrixBase<BaseFloat> *>(nnet_out[i]);
-        }
 
         // evaluate objective function we've chosen
         if (objective_function == "xent") {
-          xent.Eval(nnet_out_base, nnet_tgt, frm_subnnet_ids, obj_diff);
+          xent.Eval(nnet_out, nnet_tgt, frm_subnnet_ids, obj_diff);
         } else if (objective_function == "mse") {
           // we don't support mse now
           // mse.Eval(nnet_out, nnet_tgt, &obj_diff);
@@ -278,12 +273,7 @@ int main(int argc, char *argv[]) {
 
         // backward pass
         if (!crossvalidate) {
-          // backpropagate
-          obj_diff_base.resize(obj_diff.size());
-          for (int32 i=0; i<obj_diff.size(); i++) {
-            obj_diff_base[i] = dynamic_cast<CuMatrixBase<BaseFloat> *>(obj_diff[i]);
-          }
-          multi_nnet.Backpropagate(obj_diff_base, NULL);
+          multi_nnet.Backpropagate(obj_diff, NULL);
         }
 
 

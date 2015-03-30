@@ -140,7 +140,7 @@ void Xent::Eval(const CuMatrixBase<BaseFloat>& net_out, const Posterior& post, C
   }
 }
 
-void Xent::Eval(const std::vector<CuMatrixBase<BaseFloat> *> &net_outs, const Posterior& post, 
+void Xent::Eval(const std::vector<CuMatrix<BaseFloat> *> &net_outs, const Posterior& post, 
                 const std::vector<int32> &subnnet_ids, std::vector<CuMatrix<BaseFloat>* > &diffs) {
   const int32 num_frames = net_outs.front()->NumRows(),
               num_subnnets = net_outs.size();

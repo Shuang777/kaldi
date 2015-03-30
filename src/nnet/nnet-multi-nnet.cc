@@ -179,7 +179,45 @@ void MultiNnet::Propagate(const std::vector<CuMatrix<BaseFloat> *> &in, std::vec
   }
 }
 
-void MultiNnet::Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_diff) {
+void MultiNnet::Backpropagate(const std::vector<CuMatrix<BaseFloat> *> &out_diff, CuMatrix<BaseFloat> *in_diff) {
+  //////////////////////////////////////
+  // Backpropagation
+  //
+  KALDI_ASSERT((int32)shared_propagate_buf_.size() == NumSharedComponents()+1);
+  KALDI_ASSERT((int32)shared_backpropagate_buf_.size() == NumSharedComponents()+1);
+  KALDI_ASSERT(out_diff.size() > 0);
+  shared_backpropagate_buf_.back().Resize(out_diff[0]->NumRows(), SharedOutputDims(), kSetZero);
+  for(int32 i=0; i<NumSubNnets(); i++) {
+    // copy out_diff to last buffer
+    sub_nnets_backpropagate_buf_[i][NumSubNnetComponents()] = (*out_diff[i]);
+    // backpropagate using buffers
+    for(int32 j=NumSubNnetComponents()-1; j>=0; j--) {
+      sub_nnets_components_[i][j]->Backpropagate(sub_nnets_propagate_buf_[i][j], sub_nnets_propagate_buf_[i][j+1],
+      sub_nnets_backpropagate_buf_[i][j+1], &sub_nnets_backpropagate_buf_[i][j]);
+      if (sub_nnets_components_[i][j]->IsUpdatable()) {
+        UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(sub_nnets_components_[i][j]);
+        uc->Update(sub_nnets_propagate_buf_[i][j], sub_nnets_backpropagate_buf_[i][j+1]);
+      }
+    }
+    shared_backpropagate_buf_.back().AddMat(1.0, sub_nnets_backpropagate_buf_[i].front(), kNoTrans);
+  }
+  // backpropagate through shared layers
+  for (int32 i = NumSharedComponents()-1; i >= 0; i--) {
+    shared_components_[i]->Backpropagate(shared_propagate_buf_[i], shared_propagate_buf_[i+1],
+    shared_backpropagate_buf_[i+1], &shared_backpropagate_buf_[i]);
+    if (shared_components_[i]->IsUpdatable()) {
+      UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(shared_components_[i]);
+      uc->Update(shared_propagate_buf_[i], shared_backpropagate_buf_[i+1]);
+    }
+  }
+  // eventually export the derivative
+  if (NULL != in_diff) (*in_diff) = shared_backpropagate_buf_[0];
+  //
+  // End of Backpropagation
+  //////////////////////////////////////
+}
+
+void MultiNnet::Backpropagate(const std::vector<CuMatrix<BaseFloat> *> &out_diff, std::vector<CuMatrix<BaseFloat> *> &in_diff) {
 
   //////////////////////////////////////
   // Backpropagation
@@ -218,7 +256,7 @@ void MultiNnet::Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_
   
   if (merge_component_ != NULL) {
     merge_component_->Backpropagate(in_sub_nnets_propagate_buf_, shared_propagate_buf_[0],
-                                    shared_propagate_buf_[0], in_sub_nnets_backpropagate_buf_);
+                                    shared_backpropagate_buf_[0], in_sub_nnets_backpropagate_buf_);
   }
 
   for(int32 i=0; i<NumInSubNnets(); i++) {
@@ -233,6 +271,13 @@ void MultiNnet::Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_
     }
   }
 
+  if (in_diff.size() != 0) {
+    for (int32 i=0; i<NumInSubNnetComponents(); i++){
+      if (NULL != in_diff[i]) {
+        (*in_diff[i]) = in_sub_nnets_backpropagate_buf_[i][0];
+      }
+    }
+  }
 
   //
   // End of Backpropagation
