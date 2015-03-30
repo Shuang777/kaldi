@@ -80,6 +80,9 @@ class RbmBase : public Component {
                      const CuMatrixBase<BaseFloat> &out_diff, CuMatrix<BaseFloat> *in_diff) { }
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) { }
+  
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > >&in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {}
   ////
 };
 
@@ -227,6 +230,10 @@ class Rbm : public RbmBase {
     if (hid_type_ == RbmBase::Bernoulli) {
       out->Sigmoid(*out);
     }
+  }
+  
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
   // RBM training API

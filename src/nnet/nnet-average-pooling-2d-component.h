@@ -134,21 +134,25 @@ class AveragePooling2DComponent : public Component {
     int out_fmap_cnt=0;
     for (int32 m=0; m < fmap_x_len_-pool_x_len_+1;m=m+pool_x_step_){
       for (int32 n=0; n< fmap_y_len_-pool_y_len_+1; n=n+pool_y_step_){
-    int32 st=0;
-    st=(m*fmap_y_len_+n)*num_input_fmaps;      
-    CuSubMatrix<BaseFloat> pool(out->ColRange(out_fmap_cnt*num_input_fmaps, num_input_fmaps));
-    pool.SetZero(); // reset
-    for (int32 i=0; i< pool_x_len_; i++){
-      for (int32 j=0; j< pool_y_len_; j++){
-        int32 c=0;
-        c=st+i*(num_input_fmaps*fmap_y_len_)+j*num_input_fmaps;
-        pool.AddMat(1.0, in.ColRange(c, num_input_fmaps));
+        int32 st=0;
+        st=(m*fmap_y_len_+n)*num_input_fmaps;      
+        CuSubMatrix<BaseFloat> pool(out->ColRange(out_fmap_cnt*num_input_fmaps, num_input_fmaps));
+        pool.SetZero(); // reset
+        for (int32 i=0; i< pool_x_len_; i++){
+          for (int32 j=0; j< pool_y_len_; j++){
+            int32 c=0;
+            c=st+i*(num_input_fmaps*fmap_y_len_)+j*num_input_fmaps;
+            pool.AddMat(1.0, in.ColRange(c, num_input_fmaps));
+          }
         }
+        pool.Scale(1.0/(pool_x_len_*pool_y_len_));
+        out_fmap_cnt++;
       }
-    pool.Scale(1.0/(pool_x_len_*pool_y_len_));
-    out_fmap_cnt++;
     }
-      }
+  }
+
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
@@ -203,6 +207,11 @@ class AveragePooling2DComponent : public Component {
     tgt.Scale(1.0/patch_summands[c]);
       }
     }
+  }
+
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
  private:

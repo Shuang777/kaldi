@@ -112,6 +112,10 @@ class MaxPoolingComponent : public Component {
     }
   }
 
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) {
     // useful dims
@@ -154,6 +158,11 @@ class MaxPoolingComponent : public Component {
       KALDI_ASSERT(patch_summands[p] > 0); // patch at least in one pool
       tgt.Scale(1.0/patch_summands[p]);
     }
+  }
+
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
  private:

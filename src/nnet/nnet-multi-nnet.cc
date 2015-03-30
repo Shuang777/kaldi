@@ -43,6 +43,8 @@ void MultiNnet::Copy (const MultiNnet& other) {
     in_sub_nnets_components_.push_back(in_sub_nnet_components_);
   }
 
+  merge_component_ = other.GetMergeComponent().Copy();
+  
   // create empty buffers for subnnet
   for(int32 i=0; i<other.NumInSubNnets(); i++) {
     std::vector<CuMatrix<BaseFloat> > in_sub_nnet_propagate_buf_;
@@ -150,8 +152,8 @@ void MultiNnet::Propagate(const std::vector<CuMatrix<BaseFloat> *> &in, std::vec
       for(int32 j=0; j<NumInSubNnetComponents(); j++) {
         in_sub_nnets_components_[i][j]->Propagate(in_sub_nnets_propagate_buf_[i][j], &in_sub_nnets_propagate_buf_[i][j+1]);
       }
-      shared_propagate_buf_[0].AddMat(1.0, in_sub_nnets_propagate_buf_[i].back());
     }
+    merge_component_->Propagate(in_sub_nnets_propagate_buf_, &shared_propagate_buf_[0]);
   } else {
     shared_propagate_buf_[0] = *in[0];
   }
@@ -177,7 +179,7 @@ void MultiNnet::Propagate(const std::vector<CuMatrix<BaseFloat> *> &in, std::vec
   }
 }
 
-void MultiNnet::Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_diff, CuMatrix<BaseFloat> *in_diff) {
+void MultiNnet::Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_diff) {
 
   //////////////////////////////////////
   // Backpropagation
@@ -213,70 +215,28 @@ void MultiNnet::Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_
       uc->Update(shared_propagate_buf_[i], shared_backpropagate_buf_[i+1]);
     }
   }
-  // eventually export the derivative
-  if (NULL != in_diff) (*in_diff) = shared_backpropagate_buf_[0];
+  
+  if (merge_component_ != NULL) {
+    merge_component_->Backpropagate(in_sub_nnets_propagate_buf_, shared_propagate_buf_[0],
+                                    shared_propagate_buf_[0], in_sub_nnets_backpropagate_buf_);
+  }
+
+  for(int32 i=0; i<NumInSubNnets(); i++) {
+    // backpropagate using buffers
+    for(int32 j=NumInSubNnetComponents()-1; j>=0; j--) {
+      in_sub_nnets_components_[i][j]->Backpropagate(in_sub_nnets_propagate_buf_[i][j], in_sub_nnets_propagate_buf_[i][j+1],
+                                    in_sub_nnets_backpropagate_buf_[i][j+1], &in_sub_nnets_backpropagate_buf_[i][j]);
+      if (in_sub_nnets_components_[i][j]->IsUpdatable()) {
+        UpdatableComponent *uc = dynamic_cast<UpdatableComponent*>(in_sub_nnets_components_[i][j]);
+        uc->Update(in_sub_nnets_propagate_buf_[i][j], in_sub_nnets_backpropagate_buf_[i][j+1]);
+      }
+    }
+  }
+
 
   //
   // End of Backpropagation
   //////////////////////////////////////
-}
-
-void MultiNnet::Feedforward(const std::vector<CuMatrix<BaseFloat> *> &in, const int32 subnnet_id, 
-                            CuMatrix<BaseFloat> *out) {
-  KALDI_ASSERT(NULL != out);
-  KALDI_ASSERT(in.size() > 0);
-  if (NumInSubNnets() != 0) {
-    KALDI_ASSERT(in.size() == NumInSubNnets());
-  } else {
-    KALDI_ASSERT(in.size() == 1);
-  }
-
-  // we need at least 3 input buffers for shared components
-  shared_propagate_buf_.resize(3);
-
-  // the in sub nnets part, we use the 2nd and 3rd buffer
-  if (NumInSubNnets() > 0) {
-    // we need at least 2 input buffers for subnnets
-    shared_propagate_buf_[0].Resize(in[0]->NumRows(), in_sub_nnets_components_[0].back()->OutputDim());
-    for(int32 i=0; i<NumInSubNnets(); i++) {
-      shared_propagate_buf_[2] = *in[i];
-      int32 j = 0;
-      for(; j<NumInSubNnetComponents(); j++) {
-        in_sub_nnets_components_[i][j]->Propagate(shared_propagate_buf_[(j+1)%2+1], &shared_propagate_buf_[j%2+1]);
-      }
-      shared_propagate_buf_[0].AddMat(1.0, shared_propagate_buf_[(j+1)%2+1]);
-    }
-  } else {
-    shared_propagate_buf_[0] = *in[0];
-  }
-  
-  // propagate by using exactly 2 auxiliary buffers for shared layers
-  if (NumSharedComponents() > 0) {
-    int32 L = 0;
-    for(; L<NumSharedComponents(); L++) {
-      shared_components_[L]->Propagate(shared_propagate_buf_[L%2], &shared_propagate_buf_[(L+1)%2]);
-    }
-    shared_propagate_buf_[0] = shared_propagate_buf_[L%2];
-  }
-  
-  // finally, for sub nnet components
-  if (NumSubNnetComponents() > 0) {
-    KALDI_ASSERT(subnnet_id < NumSubNnets());
-    int32 L = 0;
-    for(; L<NumSubNnetComponents()-1; L++) {
-      sub_nnets_components_[subnnet_id][L]->Propagate(shared_propagate_buf_[L%2], &shared_propagate_buf_[(L+1)%2]);
-    }
-    sub_nnets_components_[subnnet_id][L]->Propagate(shared_propagate_buf_[L%2], out);
-  } else {
-    out->Resize(shared_propagate_buf_[0].NumRows(), shared_propagate_buf_[0].NumCols());
-    out->CopyFromMat(shared_propagate_buf_[0]);
-  }
-
-  // release the buffers we don't need anymore
-  shared_propagate_buf_[0].Resize(0,0);
-  shared_propagate_buf_[1].Resize(0,0);
-  shared_propagate_buf_[2].Resize(0,0);
-  shared_propagate_buf_.resize(shared_components_.size()+1);
 }
 
 void MultiNnet::Feedforward(const CuMatrixBase<BaseFloat> &in, const int32 subnnet_id, CuMatrix<BaseFloat> *out) {
@@ -312,6 +272,63 @@ void MultiNnet::Feedforward(const CuMatrixBase<BaseFloat> &in, const int32 subnn
   shared_propagate_buf_[0].Resize(0,0);
   shared_propagate_buf_[1].Resize(0,0);
 
+}
+
+void MultiNnet::Feedforward(const std::vector<CuMatrix<BaseFloat> *> &in, const int32 subnnet_id, 
+                            CuMatrix<BaseFloat> *out) {
+  KALDI_ASSERT(NULL != out);
+  KALDI_ASSERT(in.size() > 0);
+  if (NumInSubNnets() != 0) {
+    KALDI_ASSERT(in.size() == NumInSubNnets());
+  } else {
+    KALDI_ASSERT(in.size() == 1);
+  }
+
+  // we need 2 input buffers for shared components
+  shared_propagate_buf_.resize(2);
+
+  // propagate by using exactly 2 auxiliary buffers and in_sub_nnets_propagate_buf_ for in subnnet layers
+  if (NumInSubNnets() > 0) {
+    // we need at least 2 input buffers for subnnets
+    for(int32 i=0; i<NumInSubNnets(); i++) {
+      shared_propagate_buf_[0] = *in[i];
+      int32 j = 0;
+      for(; j<NumInSubNnetComponents()-1; j++) {
+        in_sub_nnets_components_[i][j]->Propagate(shared_propagate_buf_[j%2], &shared_propagate_buf_[(j+1)%2]);
+      }
+      in_sub_nnets_components_[i][j]->Propagate(shared_propagate_buf_[j%2], &in_sub_nnets_propagate_buf_[i].back());
+    }
+    merge_component_->Propagate(in_sub_nnets_propagate_buf_, &shared_propagate_buf_[0]);
+  } else {
+    shared_propagate_buf_[0] = *in[0];
+  }
+  
+  // propagate by using exactly 2 auxiliary buffers for shared layers
+  if (NumSharedComponents() > 0) {
+    int32 L = 0;
+    for(; L<NumSharedComponents(); L++) {
+      shared_components_[L]->Propagate(shared_propagate_buf_[L%2], &shared_propagate_buf_[(L+1)%2]);
+    }
+    shared_propagate_buf_[0] = shared_propagate_buf_[L%2];
+  }
+  
+  // finally, for sub nnet components
+  if (NumSubNnetComponents() > 0) {
+    KALDI_ASSERT(subnnet_id < NumSubNnets());
+    int32 L = 0;
+    for(; L<NumSubNnetComponents()-1; L++) {
+      sub_nnets_components_[subnnet_id][L]->Propagate(shared_propagate_buf_[L%2], &shared_propagate_buf_[(L+1)%2]);
+    }
+    sub_nnets_components_[subnnet_id][L]->Propagate(shared_propagate_buf_[L%2], out);
+  } else {
+    out->Resize(shared_propagate_buf_[0].NumRows(), shared_propagate_buf_[0].NumCols());
+    out->CopyFromMat(shared_propagate_buf_[0]);
+  }
+
+  // release the buffers we don't need anymore
+  shared_propagate_buf_[0].Resize(0,0);
+  shared_propagate_buf_[1].Resize(0,0);
+  shared_propagate_buf_.resize(shared_components_.size()+1);
 }
 
 int32 MultiNnet::SharedInputDims() const {
@@ -374,6 +391,20 @@ Component& MultiNnet::GetSubNnetComponent(int32 sub_nnet, int32 component) {
   KALDI_ASSERT(static_cast<size_t>(sub_nnet) < sub_nnets_components_.size());
   KALDI_ASSERT(static_cast<size_t>(component) < sub_nnets_components_[0].size());
   return *(sub_nnets_components_[sub_nnet][component]);
+}
+
+const Component& MultiNnet::GetMergeComponent() const {
+  KALDI_ASSERT(merge_component_ != NULL);
+  return *merge_component_;
+}
+
+Component& MultiNnet::GetMergeComponent() {
+  KALDI_ASSERT(merge_component_ != NULL);
+  return *merge_component_;
+}
+
+bool MultiNnet::HasMergeComponent() const {
+  return merge_component_ != NULL;
 }
 
 void MultiNnet::GetParams(Vector<BaseFloat>* wei_copy) const {
@@ -634,6 +665,14 @@ void MultiNnet::Init(const std::string &file) {
       ReadToken(is, binary, &conf_line);
     }
   }
+  if (conf_line == "<MergeComponent>") {
+    ReadToken(is, binary, &conf_line);
+    KALDI_VLOG(1) << conf_line;
+    std::getline(is, conf_line_detail);
+    merge_component_ = Component::Init(conf_line+" "+conf_line_detail+"\n");
+    ReadToken(is, binary, &conf_line);
+    KALDI_ASSERT(conf_line == "</MergeComponent>");
+  }
   if (conf_line == "<SharedComponents>") {
     ReadToken(is, binary, &conf_line);
     while (conf_line != "</SharedComponents>") {
@@ -709,7 +748,8 @@ void MultiNnet::Read(std::istream &is, bool binary, const bool is_nnet /*= false
   Component *comp;
   if (!is_nnet) {
     ReadToken(is, binary, &token);
-    while (!is.eof() && token != "</MultiNnet>" && token != "<SharedComponents>" && token != "<SubNnetComponents>") {
+    while (!is.eof() && token != "</MultiNnet>" && token != "<SharedComponents>" && token != "<SubNnetComponents>"
+        && token != "<MergeComponent>") {
       // token is InSubNnetComponents
       std::vector<Component*> in_sub_nnet_components_;
       while (NULL != (comp = Component::Read(is, binary))) {
@@ -726,6 +766,12 @@ void MultiNnet::Read(std::istream &is, bool binary, const bool is_nnet /*= false
       in_sub_nnet_backpropagate_buf_.resize(NumInSubNnetComponents()+1);
       in_sub_nnets_backpropagate_buf_.push_back(in_sub_nnet_backpropagate_buf_);
 
+      ReadToken(is, binary, &token);
+    }
+    if (token == "<MergeComponent>") {
+      merge_component_ = Component::Read(is, binary);
+      ReadToken(is, binary, &token);
+      KALDI_ASSERT(token == "</MergeComponent>");
       ReadToken(is, binary, &token);
     }
   }
@@ -806,6 +852,13 @@ void MultiNnet::Write(std::ostream &os, bool binary) const {
     WriteToken(os, binary, "</InSubNnetComponents>");
     if(binary == false) os << std::endl;
   }
+  if (merge_component_ != NULL) {
+    WriteToken(os, binary, "<MergeComponent>");
+    if(binary == false) os << std::endl;
+    merge_component_->Write(os, binary);
+    WriteToken(os, binary, "</MergeComponent>");
+    if(binary == false) os << std::endl;
+  }
 
   WriteToken(os, binary, "<SharedComponents>");
   if(binary == false) os << std::endl;
@@ -846,6 +899,7 @@ void MultiNnet::WriteNnet(std::ostream &os, bool binary, const int32 in_subnnet 
     for(int32 j=0; j<NumSubNnetComponents(); j++){
       in_sub_nnets_components_[in_subnnet][j]->Write(os, binary);
     }
+    KALDI_ERR << "Think about how to handle MergeComponent!" ;
   }
   for(int32 i=0; i<NumSharedComponents(); i++) {
     shared_components_[i]->Write(os, binary);
@@ -1048,37 +1102,46 @@ void MultiNnet::Check() const {
   for(int32 i=0; i<NumSubNnets(); i++) {
     KALDI_ASSERT(sub_nnets_backpropagate_buf_[i].size() == NumSubNnetComponents()+1);
   }
+  KALDI_ASSERT((NumInSubNnets() == 0) == (merge_component_ == NULL));    // if there is in_sub_nnet, we need a merge component.
 
   // check dims,
+  int32 sum_in_sub_nnets_output_dim = 0;
   for(int32 i=0; i<NumInSubNnets(); i++) {
     for(int32 j=0; j+1<NumInSubNnetComponents(); j++) {
       KALDI_ASSERT(in_sub_nnets_components_[i][j] != NULL);
       int32 output_dim = in_sub_nnets_components_[i][j]->OutputDim();
       int32 next_input_dim = in_sub_nnets_components_[i][j+1]->InputDim();
       KALDI_ASSERT(output_dim == next_input_dim);
-    }
-    if (NumSharedComponents() > 0) {
-      int32 output_dim = in_sub_nnets_components_[i].back()->OutputDim();
-      int32 next_input_dim = shared_components_.front()->InputDim();
-      KALDI_ASSERT(output_dim == next_input_dim);
-    } else if (NumSubNnets() > 0) {
-      int32 output_dim = in_sub_nnets_components_[i].back()->OutputDim();
-      int32 next_input_dim = sub_nnets_components_[0].front()->InputDim();
-      KALDI_ASSERT(output_dim == next_input_dim);
-    }
+    }  
     // ensure all outdim are of same dim
     if (i != 0){
       int32 output_dim = in_sub_nnets_components_[i].back()->OutputDim();
       int32 first_output_dim = in_sub_nnets_components_[0].back()->OutputDim();
       KALDI_ASSERT(output_dim == first_output_dim);
     }
+    sum_in_sub_nnets_output_dim += in_sub_nnets_components_[i].back()->OutputDim();
   }
+  if (NumInSubNnets() > 0) {
+    int32 input_dim = merge_component_->InputDim();
+    KALDI_ASSERT(input_dim == sum_in_sub_nnets_output_dim);
+
+    int32 output_dim = merge_component_->OutputDim();
+    if (NumSharedComponents() > 0) {
+      int32 next_input_dim = shared_components_.front()->InputDim();
+      KALDI_ASSERT(output_dim == next_input_dim);
+    } else if (NumSubNnets() > 0) {
+      int32 next_input_dim = sub_nnets_components_[0].front()->InputDim();
+      KALDI_ASSERT(output_dim == next_input_dim);
+    }
+  }
+
   for(int32 i=0; i+1<NumSharedComponents(); i++) {
     KALDI_ASSERT(shared_components_[i] != NULL);
     int32 output_dim = shared_components_[i]->OutputDim();
     int32 next_input_dim = shared_components_[i+1]->InputDim();
     KALDI_ASSERT(output_dim == next_input_dim);
   }
+
   for(int32 i=0; i<NumSubNnets(); i++) {
     for(int32 j=0; j+1<NumSubNnetComponents(); j++) {
       KALDI_ASSERT(sub_nnets_components_[i][j] != NULL);
@@ -1125,6 +1188,10 @@ void MultiNnet::Destroy() {
   in_sub_nnets_components_.resize(0);
   in_sub_nnets_propagate_buf_.resize(0);
   in_sub_nnets_backpropagate_buf_.resize(0);
+
+  if (merge_component_ != NULL) {
+    delete merge_component_;
+  }
 
   // delete shared components
   for(int32 i=0; i<NumSharedComponents(); i++) {

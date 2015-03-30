@@ -21,6 +21,7 @@
 
 #include "nnet/nnet-nnet.h"
 #include "nnet/nnet-activation.h"
+#include "nnet/nnet-merge.h"
 #include "nnet/nnet-kl-hmm.h"
 #include "nnet/nnet-affine-transform.h"
 #include "nnet/nnet-linear-transform.h"
@@ -68,6 +69,7 @@ const struct Component::key_value Component::kMarkerMap[] = {
   { Component::kSentenceAveragingComponent,"<SentenceAveragingComponent>"},
   { Component::kFramePoolingComponent, "<FramePoolingComponent>"},
   { Component::kParallelComponent, "<ParallelComponent>"},
+  { Component::kBlockAddComponent, "<BlockAddComponent>"},
 };
 
 
@@ -165,6 +167,9 @@ Component* Component::NewComponentOfType(ComponentType comp_type,
     case Component::kParallelComponent :
       ans = new ParallelComponent(input_dim, output_dim);
       break;
+    case Component::kBlockAddComponent :
+      ans = new BlockAddComponent(input_dim, output_dim);
+      break;
     case Component::kUnknown :
     default :
       KALDI_ERR << "Missing type: " << TypeToMarker(comp_type);
@@ -207,7 +212,7 @@ Component* Component::Read(std::istream &is, bool binary) {
     ReadToken(is, binary, &token); // Next token is a Component
   }
   // Finish reading when optional terminal token appears
-  if(token == "</Nnet>" || token == "</SharedComponents>" || token == "</SubNnetComponents>" || token == "</InSubNnetComponents>") {
+  if(token == "</Nnet>" || token == "</SharedComponents>" || token == "</SubNnetComponents>" || token == "</InSubNnetComponents>" || token == "</MergeComponent>") {
     return NULL;
   }
 

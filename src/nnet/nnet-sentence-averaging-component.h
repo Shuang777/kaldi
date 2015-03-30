@@ -94,6 +94,10 @@ class SentenceAveragingComponent : public UpdatableComponent {
     out->ColRange(0,nnet_outputs).AddVecToRows(1.0, average_row, 0.0);
     out->ColRange(nnet_outputs,num_inputs).CopyFromMat(in);
   }
+  
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
 
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) {
@@ -101,6 +105,11 @@ class SentenceAveragingComponent : public UpdatableComponent {
     int32 num_inputs = in.NumCols(),
       nnet_outputs = nnet_.OutputDim();
     in_diff->CopyFromMat(out_diff.ColRange(nnet_outputs,num_inputs));
+  }
+
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
   void Update(const CuMatrixBase<BaseFloat> &input, const CuMatrixBase<BaseFloat> &diff) {

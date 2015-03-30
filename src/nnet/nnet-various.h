@@ -244,9 +244,18 @@ class Splice: public Component {
   void PropagateFnc(const CuMatrixBase<BaseFloat> &in, CuMatrixBase<BaseFloat> *out) {
     cu::Splice(in, frame_offsets_, out); 
   }
-
+  
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+  
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+  
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
@@ -376,6 +385,10 @@ class CopyComponent: public Component {
   void PropagateFnc(const CuMatrixBase<BaseFloat> &in, CuMatrixBase<BaseFloat> *out) { 
     cu::Copy(in,copy_from_indices_,out); 
   }
+  
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
 
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) {
@@ -385,6 +398,11 @@ class CopyComponent: public Component {
       warning_displayed = true;
     }
     in_diff->SetZero();
+  }
+  
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
  protected:
@@ -468,10 +486,19 @@ class AddShift : public UpdatableComponent {
     out->AddVecToRows(1.0, shift_data_, 1.0);
   }
 
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) {
     //derivative of additive constant is zero...
     in_diff->CopyFromMat(out_diff);
+  }
+  
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
   void Update(const CuMatrixBase<BaseFloat> &input, const CuMatrixBase<BaseFloat> &diff) {
@@ -575,11 +602,20 @@ class Rescale : public UpdatableComponent {
     out->MulColsVec(scale_data_);
   }
 
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) {
     in_diff->CopyFromMat(out_diff);
     // derivative gets also scaled by the scale_data_
     in_diff->MulColsVec(scale_data_);
+  }
+  
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
   void Update(const CuMatrixBase<BaseFloat> &input, const CuMatrixBase<BaseFloat> &diff) {

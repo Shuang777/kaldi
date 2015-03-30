@@ -279,6 +279,10 @@ class ConvolutionalComponent : public UpdatableComponent {
     }
   }
 
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
 
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) {
@@ -304,6 +308,11 @@ class ConvolutionalComponent : public UpdatableComponent {
         tgt.AddMat(1.0, src); // sum
       }
     }
+  }
+  
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > >&in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
 

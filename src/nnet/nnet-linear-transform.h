@@ -108,11 +108,20 @@ class LinearTransform : public UpdatableComponent {
     // multiply by weights^t
     out->AddMatMat(1.0, in, kNoTrans, linearity_, kTrans, 0.0);
   }
+  
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,CuMatrixBase<BaseFloat> *out) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
 
   void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
                         const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) {
     // multiply error derivative by weights
     in_diff->AddMatMat(1.0, out_diff, kNoTrans, linearity_, kNoTrans, 0.0);
+  }
+  
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > >&in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
 

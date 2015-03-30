@@ -77,7 +77,9 @@ class Component {
     kMaxPoolingComponent,
     kMaxPooling2DComponent,
     kFramePoolingComponent, 
-    kParallelComponent
+    kParallelComponent,
+
+    kBlockAddComponent
   } ComponentType;
   /// A pair of type and marker 
   struct key_value {
@@ -121,12 +123,21 @@ class Component {
  
   /// Perform forward pass propagation Input->Output
   void Propagate(const CuMatrixBase<BaseFloat> &in, CuMatrix<BaseFloat> *out); 
+ 
+  /// for some merge component, we need a separate propagate function
+  void Propagate(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in, CuMatrix<BaseFloat> *out); 
+
   /// Perform backward pass propagation, out_diff -> in_diff
   /// '&in' and '&out' will sometimes be unused... 
   void Backpropagate(const CuMatrixBase<BaseFloat> &in,
                      const CuMatrixBase<BaseFloat> &out,
                      const CuMatrixBase<BaseFloat> &out_diff,
                      CuMatrix<BaseFloat> *in_diff); 
+
+  void Backpropagate(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,
+                     const CuMatrixBase<BaseFloat> &out,
+                     const CuMatrixBase<BaseFloat> &out_diff,
+                     std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff); 
 
   /// Initialize component from a line in config file
   static Component* Init(const std::string &conf_line);
@@ -145,11 +156,20 @@ class Component {
   /// Forward pass transformation (to be implemented by descending class...)
   virtual void PropagateFnc(const CuMatrixBase<BaseFloat> &in,
                             CuMatrixBase<BaseFloat> *out) = 0;
+
+  virtual void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,
+                            CuMatrixBase<BaseFloat> *out) = 0;
+
   /// Backward pass transformation (to be implemented by descending class...)
   virtual void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in,
                                 const CuMatrixBase<BaseFloat> &out,
                                 const CuMatrixBase<BaseFloat> &out_diff,
                                 CuMatrixBase<BaseFloat> *in_diff) = 0;
+
+  virtual void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,
+                                const CuMatrixBase<BaseFloat> &out,
+                                const CuMatrixBase<BaseFloat> &out_diff,
+                                std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) = 0;
 
   /// Initialize internal data of a component
   virtual void InitData(std::istream &is) { }
@@ -243,6 +263,22 @@ inline void Component::Propagate(const CuMatrixBase<BaseFloat> &in,
   PropagateFnc(in, out);
 }
 
+inline void Component::Propagate(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,
+                                 CuMatrix<BaseFloat> *out) {
+  // Check the dims
+  int32 sum_input_dim = 0;
+  for (int32 i=0; i < in.size(); i++) {
+    sum_input_dim += in[i].back().NumCols();
+  }
+  if (input_dim_ != sum_input_dim) {
+    KALDI_ERR << "Non-matching dims! " << TypeToMarker(GetType()) 
+              << " input-dim : " << input_dim_ << " sum data : " << sum_input_dim;
+  }
+  // Allocate target buffer
+  out->Resize(in[0].back().NumRows(), output_dim_, kSetZero); // reset
+  // Call the propagation implementation of the component
+  PropagateFnc(in, out);
+}
 
 inline void Component::Backpropagate(const CuMatrixBase<BaseFloat> &in,
                                      const CuMatrixBase<BaseFloat> &out,
@@ -276,6 +312,28 @@ inline void Component::Backpropagate(const CuMatrixBase<BaseFloat> &in,
   }
 }
 
+inline void Component::Backpropagate(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,
+                                     const CuMatrixBase<BaseFloat> &out,
+                                     const CuMatrixBase<BaseFloat> &out_diff,
+                                     std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+  // Check the dims
+  if (output_dim_ != out_diff.NumCols()) {
+    KALDI_ERR << "Non-matching output dims, component:" << output_dim_ 
+              << " data:" << out_diff.NumCols();
+  }
+  
+  // Allocate target buffer
+  for(int32 i=0; i<in_diff.size(); i++) {
+    in_diff[i].back().Resize(out_diff.NumRows(), input_dim_/in_diff.size(), kSetZero); // reset
+    // Asserts on the dims
+    KALDI_ASSERT((in[i].back().NumRows() == out.NumRows()) &&
+                 (in[i].back().NumRows() == out_diff.NumRows()) &&
+                 (in[i].back().NumRows() == in_diff[i].back().NumRows()));
+  }
+  KALDI_ASSERT(out.NumCols() == out_diff.NumCols());
+  // Call the backprop implementation of the component
+  BackpropagateFnc(in, out, out_diff, in_diff);
+}
 
 } // namespace nnet1
 } // namespace kaldi

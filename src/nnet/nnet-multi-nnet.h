@@ -50,6 +50,8 @@ class MultiNnet {
   void Propagate(const std::vector<CuMatrix<BaseFloat> *> &in, std::vector<CuMatrix<BaseFloat> *> &out); 
   /// Perform backward pass through the network
   void Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_diff, CuMatrix<BaseFloat> *in_diff);
+  /// Perform backward pass through the network (with in_sub_nnets)
+  void Backpropagate(const std::vector<CuMatrixBase<BaseFloat> *> &out_diff);
   /// Perform forward pass through the network, don't keep buffers (use it when not training)
   void Feedforward(const CuMatrixBase<BaseFloat> &in, const int32 subnnet_id, CuMatrix<BaseFloat> *out); 
   /// Perform forward pass through the network, don't keep buffers (use it when not training)
@@ -81,6 +83,11 @@ class MultiNnet {
 
   const Component& GetSubNnetComponent(int32 sub_nnet, int32 component) const;
   Component& GetSubNnetComponent(int32 sub_nnet, int32 component);
+
+  const Component& GetMergeComponent() const;
+  Component& GetMergeComponent();
+
+  bool HasMergeComponent() const;
 
   /// Appends this component to the components already in the neural net.
   /// Takes ownership of the pointer
@@ -187,6 +194,8 @@ class MultiNnet {
   std::vector<std::vector<Component*> > in_sub_nnets_components_;
   std::vector<std::vector<CuMatrix<BaseFloat> > > in_sub_nnets_propagate_buf_;
   std::vector<std::vector<CuMatrix<BaseFloat> > > in_sub_nnets_backpropagate_buf_;
+
+  Component* merge_component_;
 };
 
 
