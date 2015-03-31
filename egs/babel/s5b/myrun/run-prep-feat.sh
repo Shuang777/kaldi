@@ -42,8 +42,6 @@ datalist=$(eval echo "\$${type}_data_list")
 featscp=$(eval echo "\$${feattype}_${type}_featscp")
 #swdfeatscp=$(eval echo "\$swd_${type}_featscp")
 
-[ "$feattype" == "mfcc" ] && featscp=$(eval echo "\$swd_${type}_featscp")
-
 [ "$srctype" == "plp" ] && srcext=plp_pitch || srcext=$srctype
 [ "$srctype2" == "plp" ] && srcext2=plp_pitch || srcext2=$srctype2
 [ "$feattype" == "plp" ] && featext=plp_pitch || featext=$feattype
@@ -66,7 +64,7 @@ echo objdata $objdata
 if [ ! -f data/$objdata/.done ]; then
   cp -rfT data/${type} data/${objdata}
   # all non-plp feature requires a swd.feats.scp
-  if [ "$feattype" != "plp" ] && [[ ! "$feattype" =~ "bn" ]] && [ "$feattype" != "fmllr" ] && [ $tandemmode ] ; then
+  if [ "$feattype" != "mfcc" ] && [ "$feattype" != "plp" ] && [[ ! "$feattype" =~ "bn" ]] && [ "$feattype" != "fmllr" ] && [ $tandemmode ] ; then
     [ -f "$featscp" ] || die "no featscp file $featscp"
     cp $featscp data/$objdata/swd.feats.scp
   fi
@@ -88,7 +86,7 @@ if [ ! -f data/$objdata/.done ]; then
     elif [ $segmode != "seg" ]; then
       die "unknown segmode $segmode"
     fi
-    if [ "$feattype" != "plp" ] && [[ ! "$feattype" =~ "bn" ]] && [[ "$feattype" != "fmllr" ]] && [ ! $tandemmode ]; then  
+    if [ "$feattype" != "mfcc" ] && [ "$feattype" != "plp" ] && [[ ! "$feattype" =~ "bn" ]] && [[ "$feattype" != "fmllr" ]] && [ ! $tandemmode ]; then  
       # update swd.feats.scp based on the new segments
       echo "fix swd.feats.scp using segments from $swdfeatscp"
       mv data/$objdata/swd.feats.scp data/$objdata/swd.feats.scp.old
@@ -99,7 +97,7 @@ if [ ! -f data/$objdata/.done ]; then
   if [ "$feattype" == "swd" ]; then
     mylocal/make_swordfish_feat.sh --cmd $cmd --nj $nj --swd-feat-range ':14,45:' data/$objdata exp/make_${featext}/$objdata feature/swd
   elif [ "$feattype" == "mfcc" ]; then
-    mylocal/make_swordfish_feat.sh --cmd $cmd --nj $nj --swd-feat-range ':14' data/$objdata exp/make_${featext}/$objdata feature/$featext
+    steps/make_mfcc_pitch.sh --cmd $cmd --nj $nj data/$objdata exp/make_${featext}/$objdata feature/$featext
   elif [ "$feattype" == "flow" ]; then
     mylocal/make_swordfish_feat.sh --cmd $cmd --nj $nj --swd-feat-range ':17' data/$objdata exp/make_${featext}/$objdata feature/$featext
   elif [ "$feattype" == "msgpp" ]; then
