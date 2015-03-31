@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
         "\n"
         "Usage:  multi-nnet-propagate [options] <model-in> <feature-rspecifier-1> ... <targets-rspecifier> <subnnet-ids-rspecifier> <feature-wspecifier>\n"
         "e.g.: \n"
-        " multi-nnet-propagate multi_nnet ark:features1.ark ... ark:targets.ark ark:subnnet_ids.ark ark:mlpoutput.ark\n";
+        " multi-nnet-propagate multi_nnet ark:features1.ark ... ark:targets.ark ark:mlpoutput.ark\n";
 
     ParseOptions po(usage);
 
@@ -55,21 +55,23 @@ int main(int argc, char *argv[]) {
 
     std::string use_gpu="no";
     po.Register("use-gpu", &use_gpu, "yes|no|optional, only has effect if compiled with CUDA"); 
+    
+    std::string subnnet_ids_rspecifier;
+    po.Register("subnnet-ids", &subnnet_ids_rspecifier, "subnnet ids for multiple objective learning");
 
     po.Read(argc, argv);
 
-    if (po.NumArgs() < 5) {
+    if (po.NumArgs() < 4) {
       po.PrintUsage();
       exit(1);
     }
 
     std::string model_filename = po.GetArg(1);
     std::vector<std::string> feature_rspecifiers;
-    for (int i=2; i<po.NumArgs()-2; i++) {
+    for (int i=2; i<po.NumArgs()-1; i++) {
       feature_rspecifiers.push_back(po.GetArg(i));
     }
-    std::string targets_rspecifier = po.GetArg(po.NumArgs()-2),
-                subnnet_ids_rspecifier = po.GetArg(po.NumArgs()-1),
+    std::string targets_rspecifier = po.GetArg(po.NumArgs()-1),
                 feature_wspecifier = po.GetArg(po.NumArgs());
 
     const int num_features = feature_rspecifiers.size();
@@ -97,17 +99,15 @@ int main(int argc, char *argv[]) {
     MultiNnet multi_nnet;
     multi_nnet.Read(model_filename);
     //optionally remove softmax
-    if (no_softmax && multi_nnet.GetSubNnetComponent(0, multi_nnet.NumSubNnetComponents()-1).GetType() ==
-        kaldi::nnet1::Component::kSoftmax) {
+    if (no_softmax && multi_nnet.GetLastComponent().GetType() == kaldi::nnet1::Component::kSoftmax) {
       KALDI_LOG << "Removing softmax from the nnet " << model_filename;
-      multi_nnet.RemoveSubNnetComponent(multi_nnet.NumSubNnetComponents()-1);
+      multi_nnet.RemoveLastSoftmax();
     }
     //check for some non-sense option combinations
     if (apply_log && no_softmax) {
       KALDI_ERR << "Nonsense option combination : --apply-log=true and --no-softmax=true";
     }
-    if (apply_log && multi_nnet.GetSubNnetComponent(0,multi_nnet.NumSubNnetComponents()-1).GetType() !=
-        kaldi::nnet1::Component::kSoftmax) {
+    if (apply_log && multi_nnet.GetLastComponent().GetType() != kaldi::nnet1::Component::kSoftmax) {
       KALDI_ERR << "Used --apply-log=true, but nnet " << model_filename 
                 << " does not have <softmax> as last component!";
     }
@@ -131,7 +131,10 @@ int main(int argc, char *argv[]) {
       feature_readers[i].Open(feature_rspecifiers[i]);
     }
     SequentialPosteriorReader targets_reader(targets_rspecifier);
-    SequentialInt32VectorReader subnnet_ids_reader(subnnet_ids_rspecifier);
+    SequentialInt32VectorReader subnnet_ids_reader;
+    if (subnnet_ids_rspecifier != "") {
+      subnnet_ids_reader.Open(subnnet_ids_rspecifier);
+    }
     BaseFloatMatrixWriter feature_writer(feature_wspecifier);
 
     std::vector<CuMatrix<BaseFloat> > feats(num_features);
@@ -141,8 +144,8 @@ int main(int argc, char *argv[]) {
     }
     std::vector<const CuMatrixBase<BaseFloat> *> nnet_ins(num_features);
     std::vector<CuMatrix<BaseFloat> *> nnet_out;
-    std::vector<CuMatrix<BaseFloat> *> obj_diff(multi_nnet.NumSubNnets());
-    for (int32 i=0; i<multi_nnet.NumSubNnets(); i++) {
+    std::vector<CuMatrix<BaseFloat> *> obj_diff(multi_nnet.NumOutputObjs());
+    for (int32 i=0; i<multi_nnet.NumOutputObjs(); i++) {
       obj_diff[i] = new CuMatrix<BaseFloat>();
     }
     Matrix<BaseFloat> nnet_backout_host;
@@ -207,8 +210,13 @@ int main(int argc, char *argv[]) {
       Posterior targets = targets_reader.Value();
       targets_reader.Next();
 
-      std::vector<int32> frm_subnnet_ids = subnnet_ids_reader.Value();
-      subnnet_ids_reader.Next();
+      std::vector<int32> frm_subnnet_ids;
+      if(subnnet_ids_rspecifier != "") {
+        frm_subnnet_ids = subnnet_ids_reader.Value();
+        subnnet_ids_reader.Next();
+      } else {
+        frm_subnnet_ids.assign(nnet_ins[0]->NumRows(),0);
+      }
 
       xent.Eval(nnet_out, targets, frm_subnnet_ids, obj_diff);
  

@@ -43,7 +43,7 @@ int main(int argc, char *argv[]) {
         "This version use pdf-posterior as targets, prepared typically by ali-to-post.\n"
         "Usage:  multi-nnet-train-frmshuff [options] <feature-rspecifier-1> <feature-rspecifier-2> ... <targets-rspecifier> <subnnet-ids-rspecifier> <model-in> [<model-out>]\n"
         "e.g.: \n"
-        " multi-nnet-train-frmshuff scp:feature1.scp scp:feature2.scp ... ark:posterior.ark ark:subnnet_id.ark multi_nnet.init multi_nnet.iter1\n";
+        " multi-nnet-train-frmshuff scp:feature1.scp scp:feature2.scp ... ark:posterior.ark multi_nnet.init multi_nnet.iter1\n";
 
     ParseOptions po(usage);
 
@@ -81,7 +81,9 @@ int main(int argc, char *argv[]) {
     
     std::string updatable_layers = "";
     po.Register("updatable-layers", &updatable_layers, "Layers to update");
-     
+
+    std::string subnnet_ids_rspecifier = "";
+    po.Register("subnnet-ids", &subnnet_ids_rspecifier, "subnnet ids file for multiple objective learning");
     
     po.Read(argc, argv);
 
@@ -91,12 +93,11 @@ int main(int argc, char *argv[]) {
     }
 
     std::vector<std::string> feature_rspecifiers;
-    for (int i=1; i<po.NumArgs()-(crossvalidate?0:1)-2; i++) {
+    for (int i=1; i<po.NumArgs()-(crossvalidate?0:1)-1; i++) {
       feature_rspecifiers.push_back(po.GetArg(i));
     }
     const int32 num_features = feature_rspecifiers.size();
-    std::string targets_rspecifier = po.GetArg(po.NumArgs()-(crossvalidate?0:1)-2),
-      subnnet_ids_rspecifier = po.GetArg(po.NumArgs()-(crossvalidate?0:1)-1),
+    std::string targets_rspecifier = po.GetArg(po.NumArgs()-(crossvalidate?0:1)-1),
       model_filename = po.GetArg(po.NumArgs()-(crossvalidate?0:1));
         
     std::string target_model_filename;
@@ -157,7 +158,10 @@ int main(int argc, char *argv[]) {
       feature_readers[i].Open(feature_rspecifiers[i]);
     }
     RandomAccessPosteriorReader targets_reader(targets_rspecifier);
-    RandomAccessInt32VectorReader subnnet_ids_reader(subnnet_ids_rspecifier);
+    RandomAccessInt32VectorReader subnnet_ids_reader;
+    if (subnnet_ids_rspecifier != "") {
+      subnnet_ids_reader.Open(subnnet_ids_rspecifier);
+    }
     RandomAccessBaseFloatVectorReader weights_reader;
     if (frame_weights != "") {
       weights_reader.Open(frame_weights);
@@ -182,10 +186,11 @@ int main(int argc, char *argv[]) {
     std::vector<const CuMatrixBase<BaseFloat> *> nnet_ins(num_features);
 
     std::vector<CuMatrix<BaseFloat> *> nnet_out, obj_diff;
-    obj_diff.resize(multi_nnet.NumSubNnets());
-    for (int32 i=0; i<multi_nnet.NumSubNnets(); i++) {
+    obj_diff.resize(multi_nnet.NumOutputObjs());
+    for (int32 i=0; i<multi_nnet.NumOutputObjs(); i++) {
       obj_diff[i] = new CuMatrix<BaseFloat>();
     }
+    std::vector<CuMatrix<BaseFloat>* > nnet_backout(num_features, NULL);
 
     Timer time;
     KALDI_LOG << (crossvalidate?"CROSS-VALIDATION":"TRAINING") << " STARTED";
@@ -209,7 +214,7 @@ int main(int argc, char *argv[]) {
           incFeatureReaders(feature_readers);
           continue;
         }
-        if (!subnnet_ids_reader.HasKey(utt)) {
+        if (subnnet_ids_rspecifier != "" && !subnnet_ids_reader.HasKey(utt)) {
           KALDI_WARN << utt << ", missing subnnet id";
           num_no_subid_mat++;
           incFeatureReaders(feature_readers);
@@ -224,7 +229,7 @@ int main(int argc, char *argv[]) {
         }
         
         Posterior targets = targets_reader.Value(utt);
-        std::vector<int32> subnnet_ids = subnnet_ids_reader.Value(utt);
+        std::vector<int32> subnnet_ids;
         // get per-frame weights
         Vector<BaseFloat> weights;
         
@@ -239,6 +244,11 @@ int main(int argc, char *argv[]) {
             } else { // all per-frame weights are 1.0
               weights.Resize(mat.NumRows());
               weights.Set(1.0);
+            }
+            if (subnnet_ids_rspecifier != "") {
+              subnnet_ids = subnnet_ids_reader.Value(utt);
+            } else {
+              subnnet_ids.assign(mat.NumRows(), 0);
             }
           }
 
@@ -324,7 +334,7 @@ int main(int argc, char *argv[]) {
 
         // backward pass
         if (!crossvalidate) {
-          multi_nnet.Backpropagate(obj_diff, NULL);
+          multi_nnet.Backpropagate(obj_diff, nnet_backout);
         }
 
         // 1st minibatch : show what happens in network 
@@ -361,7 +371,7 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    for (int32 i=0; i<multi_nnet.NumSubNnets(); i++) {
+    for (int32 i=0; i<multi_nnet.NumOutputObjs(); i++) {
       delete obj_diff[i];
     }
     for (int32 i=0; i<feats_transfs.size(); i++) {

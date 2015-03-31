@@ -244,6 +244,9 @@ void MultiNnet::Backpropagate(const std::vector<CuMatrix<BaseFloat> *> &out_diff
     }
     shared_backpropagate_buf_.back().AddMat(1.0, sub_nnets_backpropagate_buf_[i].front(), kNoTrans);
   }
+  if (NumSubNnets() == 0) {
+    shared_backpropagate_buf_.back() = *out_diff[0];
+  }
   // backpropagate through shared layers
   for (int32 i = NumSharedComponents()-1; i >= 0; i--) {
     shared_components_[i]->Backpropagate(shared_propagate_buf_[i], shared_propagate_buf_[i+1],
@@ -438,6 +441,30 @@ Component& MultiNnet::GetSubNnetComponent(int32 sub_nnet, int32 component) {
   return *(sub_nnets_components_[sub_nnet][component]);
 }
 
+const Component& MultiNnet::GetLastComponent() const {
+  if (NumSubNnets() != 0) {
+    return *(sub_nnets_components_.back().back());
+  } else if (NumSharedComponents() != 0) {
+    return *(shared_components_.back());
+  } else if (merge_component_ != NULL) {
+    return *merge_component_;
+  } else {
+    return *(in_sub_nnets_components_.back().back());
+  }
+}
+
+Component& MultiNnet::GetLastComponent() {
+  if (NumSubNnets() != 0) {
+    return *(sub_nnets_components_.back().back());
+  } else if (NumSharedComponents() != 0) {
+    return *(shared_components_.back());
+  } else if (merge_component_ != NULL) {
+    return *merge_component_;
+  } else {
+    return *(in_sub_nnets_components_.back().back());
+  }
+}
+
 const Component& MultiNnet::GetMergeComponent() const {
   KALDI_ASSERT(merge_component_ != NULL);
   return *merge_component_;
@@ -550,6 +577,20 @@ void MultiNnet::RemoveSubNnetComponent(int32 component) {
   }
   // 
   Check();
+}
+
+void MultiNnet::RemoveLastSoftmax() {
+  if (NumSubNnets() != 0) {
+    for (int32 i=0; i<NumSubNnets(); i++) {
+      KALDI_ASSERT(sub_nnets_components_[i].back()->GetType() == kaldi::nnet1::Component::kSoftmax);
+    }
+    RemoveSubNnetComponent(NumSubNnetComponents()-1);
+  } else if (NumSharedComponents() != 0) {
+    KALDI_ASSERT(shared_components_.back()->GetType() == kaldi::nnet1::Component::kSoftmax);
+    RemoveSharedComponent(NumSharedComponents()-1);
+  } else {
+    KALDI_ERR << "Please check if the top layer is softmax before removing last softmax";
+  }
 }
 
 void MultiNnet::AddInSubNnet(const Nnet& nnet_to_add) {
@@ -829,29 +870,32 @@ void MultiNnet::Read(std::istream &is, bool binary, const bool is_nnet /*= false
   shared_propagate_buf_.resize(NumSharedComponents()+1);
   shared_backpropagate_buf_.resize(NumSharedComponents()+1);
 
-  if (!is_nnet) {   // for multi-nnet part
-    ReadToken(is, binary, &token);
-    while (!is.eof() && token != "</MultiNnet>") {
-      // token is SubNnetComponents
-      std::vector<Component*> sub_nnet_components_;
-      while (NULL != (comp = Component::Read(is, binary))) {
-        sub_nnet_components_.push_back(comp);
-      }
-      sub_nnets_components_.push_back(sub_nnet_components_);
-
-      // create empty subnnet buffers
-      std::vector<CuMatrix<BaseFloat> > sub_nnet_propagate_buf_;
-      sub_nnet_propagate_buf_.resize(NumSubNnetComponents()+1);
-      sub_nnets_propagate_buf_.push_back(sub_nnet_propagate_buf_);
-      
-      std::vector<CuMatrix<BaseFloat> > sub_nnet_backpropagate_buf_;
-      sub_nnet_backpropagate_buf_.resize(NumSubNnetComponents()+1);
-      sub_nnets_backpropagate_buf_.push_back(sub_nnet_backpropagate_buf_);
-
+  if (!is_nnet && !is.eof()) {   // for multi-nnet part
+    int first_char = Peek(is, binary);
+    if (first_char != EOF) {
       ReadToken(is, binary, &token);
-    }
-    if (token != "</MultiNnet>") {
-      KALDI_ERR << "Missing </MultiNnet> at the end.";
+      while (!is.eof() && token != "</MultiNnet>") {
+        // token is SubNnetComponents
+        std::vector<Component*> sub_nnet_components_;
+        while (NULL != (comp = Component::Read(is, binary))) {
+          sub_nnet_components_.push_back(comp);
+        }
+        sub_nnets_components_.push_back(sub_nnet_components_);
+
+        // create empty subnnet buffers
+        std::vector<CuMatrix<BaseFloat> > sub_nnet_propagate_buf_;
+        sub_nnet_propagate_buf_.resize(NumSubNnetComponents()+1);
+        sub_nnets_propagate_buf_.push_back(sub_nnet_propagate_buf_);
+        
+        std::vector<CuMatrix<BaseFloat> > sub_nnet_backpropagate_buf_;
+        sub_nnet_backpropagate_buf_.resize(NumSubNnetComponents()+1);
+        sub_nnets_backpropagate_buf_.push_back(sub_nnet_backpropagate_buf_);
+
+        ReadToken(is, binary, &token);
+      }
+      if (token != "</MultiNnet>") {
+        KALDI_ERR << "Missing </MultiNnet> at the end.";
+      }
     }
   }
   // reset learn rate

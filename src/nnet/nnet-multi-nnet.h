@@ -74,6 +74,8 @@ class MultiNnet {
   int32 NumSubNnetComponents() const { return NumSubNnets() > 0 ? sub_nnets_components_[0].size() : 0; }
   int32 NumInSubNnets() const { return in_sub_nnets_components_.size(); }
   int32 NumInSubNnetComponents() const { return NumInSubNnets() > 0 ? in_sub_nnets_components_[0].size() : 0; }
+  // Number of objectives to learn
+  int32 NumOutputObjs() const { if (NumSubNnets() == 0) return 1; else return NumSubNnets();}
 
   const Component& GetSharedComponent(int32 c) const;
   Component& GetSharedComponent(int32 c);
@@ -83,6 +85,9 @@ class MultiNnet {
 
   const Component& GetSubNnetComponent(int32 sub_nnet, int32 component) const;
   Component& GetSubNnetComponent(int32 sub_nnet, int32 component);
+
+  const Component& GetLastComponent() const;
+  Component& GetLastComponent();
 
   const Component& GetMergeComponent() const;
   Component& GetMergeComponent();
@@ -99,6 +104,9 @@ class MultiNnet {
   void RemoveSubNnetComponent(int32 c);
   /// Remove in_subnnet component
   void RemoveInSubNnetComponent(int32 c);
+  /// Remove top-level softmax layer
+  void RemoveLastSoftmax();
+
   /// Add sub nnet
   void AddSubNnet(const Nnet& nnet_to_add);
   /// Add in_sub nnet
