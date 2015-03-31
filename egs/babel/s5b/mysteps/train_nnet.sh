@@ -53,6 +53,9 @@ seed=777    # seed value used for training data shuffling and initialization
 cv_subset_factor=0.1
 uttbase=true    # by default, we choose last 10% utterances for CV
 resume_anneal=true
+
+transdir=
+
 # semi-supervised training
 supcopy=1
 semidata=
@@ -82,6 +85,7 @@ data=$1
 alidir=$2
 dir=$3
 
+[ -z "$transdir" ] && transdir=$alidir
 
 for f in $alidir/final.mdl $alidir/ali.1.gz $data/feats.scp; do
   [ ! -f $f ] && echo "$0: no such file $f" && exit 1;
@@ -176,7 +180,7 @@ echo
 echo "# PREPARING FEATURES"
 #read the features
 if [ -z $feat_type ]; then
-  if [ -f $alidir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
+  if [ -f $transdir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
   echo "$0: feature type is $feat_type"
 
   case $feat_type in
@@ -188,28 +192,28 @@ if [ -z $feat_type ]; then
      ;;
     lda) feats_tr="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
          feats_cv="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.cv.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
-      cp $alidir/final.mat $dir    
+      cp $transdir/final.mat $dir    
      ;;
     fmllr) feats_tr="scp:$dir/shuffle.train.scp"
      ;;
     *) echo "$0: invalid feature type $feat_type" && exit 1;
   esac
 
-  if [ -f $alidir/trans.1 ] && [ $feat_type != "raw" ]; then
+  if [ -f $transdir/trans.1 ] && [ $feat_type != "raw" ]; then
     if [ -z $semitransdir ]; then
-      echo "$0: using transforms from $alidir"
-      feats_cv="$feats_cv transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/trans.*|' ark:- ark:- |"
-      feats_tr="$feats_tr transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/trans.*|' ark:- ark:- |"
+      echo "$0: using transforms from $transdir"
+      feats_cv="$feats_cv transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/trans.*|' ark:- ark:- |"
+      feats_tr="$feats_tr transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/trans.*|' ark:- ark:- |"
     else
-      echo "$0: using transform from $alidir and $semitransdir"
-      feats_cv="$feats_cv transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/trans.* $semitransdir/trans.* |' ark:- ark:- |"
-      feats_tr="$feats_tr transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/trans.* $semitransdir/trans.* |' ark:- ark:- |"
+      echo "$0: using transform from $transdir and $semitransdir"
+      feats_cv="$feats_cv transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/trans.* $semitransdir/trans.* |' ark:- ark:- |"
+      feats_tr="$feats_tr transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/trans.* $semitransdir/trans.* |' ark:- ark:- |"
     fi
   fi
-  if [ -f $alidir/raw_trans.1 ] && [ $feat_type == "raw" ]; then
-    echo "$0: using raw-fMLLR transforms from $alidir"
-    feats_tr="$feats_tr transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/raw_trans.*|' ark:- ark:- |"
-    feats_cv="$feats_cv transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/raw_trans.*|' ark:- ark:- |"
+  if [ -f $transdir/raw_trans.1 ] && [ $feat_type == "raw" ]; then
+    echo "$0: using raw-fMLLR transforms from $transdir"
+    feats_tr="$feats_tr transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/raw_trans.*|' ark:- ark:- |"
+    feats_cv="$feats_cv transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/raw_trans.*|' ark:- ark:- |"
   fi
 else
   feats_tr="ark:copy-feats scp:$dir/shuffle.train.scp ark:- |"
@@ -286,7 +290,7 @@ else
     transf)
       feature_transform_old=$feature_transform
       feature_transform=${feature_transform%.nnet}_transf_splice${splice_after_transf}.nnet
-      [ -z $transf ] && $alidir/final.mat
+      [ -z $transf ] && $transdir/final.mat
       [ ! -f $transf ] && echo "Missing transf $transf" && exit 1
       feat_dim=$(feat-to-dim "$feats_tr1 nnet-forward 'nnet-concat $feature_transform_old \"transf-to-nnet $transf - |\" - |' ark:- ark:- |" -)
       nnet-concat --binary=false $feature_transform_old \
@@ -339,7 +343,7 @@ if [[ -z "$mlp_init" && -z "$mlp_proto" ]]; then
   }
 
   #output-dim
-  [ -z $num_tgt ] && num_tgt=$(hmm-info --print-args=false $alidir/final.mdl | grep pdfs | awk '{ print $NF }')
+  [ -z $num_tgt ] && num_tgt=$(hmm-info --print-args=false $transdir/final.mdl | grep pdfs | awk '{ print $NF }')
 
   # make network prototype
   mlp_proto=$dir/nnet.proto
