@@ -36,7 +36,7 @@ namespace nnet1 {
 
 class MultiNnet {
  public:
-  MultiNnet() {}
+  MultiNnet() {merge_component_ = NULL;}
   MultiNnet(const MultiNnet& other);
   MultiNnet &operator = (const MultiNnet& other); // Assignment operator.
 
@@ -47,7 +47,7 @@ class MultiNnet {
   /// Perform forward pass through the network
   void Propagate(const CuMatrixBase<BaseFloat> &in, std::vector<CuMatrix<BaseFloat> *> &out); 
   /// Perform forward pass through the network with mutliple input
-  void Propagate(const std::vector<CuMatrix<BaseFloat> *> &in, std::vector<CuMatrix<BaseFloat> *> &out); 
+  void Propagate(const std::vector<const CuMatrixBase<BaseFloat> *> &in, std::vector<CuMatrix<BaseFloat> *> &out); 
   /// Perform backward pass through the network
   void Backpropagate(const std::vector<CuMatrix<BaseFloat> *> &out_diff, CuMatrix<BaseFloat> *in_diff);
   /// Perform backward pass through the network (with in_sub_nnets)

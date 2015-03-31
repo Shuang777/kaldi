@@ -130,7 +130,7 @@ void MultiNnet::Propagate(const CuMatrixBase<BaseFloat> &in, std::vector<CuMatri
   }
 }
 
-void MultiNnet::Propagate(const std::vector<CuMatrix<BaseFloat> *> &in, std::vector<CuMatrix<BaseFloat> *> &out) {
+void MultiNnet::Propagate(const std::vector<const CuMatrixBase<BaseFloat> *> &in, std::vector<CuMatrix<BaseFloat> *> &out) {
   for (int32 i=0; i<out.size(); i++) {
     KALDI_ASSERT(NULL != out[i]);
   }

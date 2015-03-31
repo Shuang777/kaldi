@@ -134,6 +134,7 @@ int main(int argc, char *argv[]) {
     for (int32 i=0; i<num_features; i++) {
       feats_transfs[i] = new CuMatrix<BaseFloat>();
     }
+    std::vector<const CuMatrixBase<BaseFloat> *> nnet_ins(num_features);
     std::vector<CuMatrix<BaseFloat> *> nnet_out;
     std::vector<CuMatrixBase<BaseFloat> *> nnet_out_base;
     std::vector<CuMatrix<BaseFloat> *> obj_diff;
@@ -172,7 +173,11 @@ int main(int argc, char *argv[]) {
         // fwd-pass
         nnet_transfs[i].Feedforward(feats[i], feats_transfs[i]);
       }
-      multi_nnet.Propagate(feats_transfs, nnet_out);
+      for (int32 i=0; i<feats_transfs.size(); i++) {
+        nnet_ins[i] = feats_transfs[i];
+      }
+
+      multi_nnet.Propagate(nnet_ins, nnet_out);
       
       // convert posteriors to log-posteriors
       if (apply_log) {
