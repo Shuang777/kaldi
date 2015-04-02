@@ -26,6 +26,7 @@
 # 
 {
 set -e
+set -x
 
 # Begin configuration.
 #
@@ -54,6 +55,7 @@ splice=5           # Temporal splicing
 splice_step=1      # Stepsize of the splicing (1 is consecutive splice, 
                    # value 2 would do [ -10 -8 -6 -4 -2 0 2 4 6 8 10 ] splicing)
 traps_dct_basis=11 # nr. od DCT basis (applies to `traps` feat_type, splice10 )
+transdir=
 semidata=
 semitransdir=
 # misc.
@@ -66,7 +68,7 @@ echo "$0 $@"  # Print the command line for logging
 . parse_options.sh || exit 1;
 
 
-if [ $# != 3 ]; then
+if [ $# != 2 ]; then
    echo "Usage: $0 <data> <ali-dir> <exp-dir>"
    echo " e.g.: $0 data/train exp/tri3_ali exp/rbm_pretrain"
    echo "main options (for others, see top of script file)"
@@ -88,8 +90,7 @@ if [ $# != 3 ]; then
 fi
 
 data=$1
-alidir=$2
-dir=$3
+dir=$2
 
 
 for f in $data/feats.scp; do
@@ -105,22 +106,22 @@ printf "\t Train-set : $data \n"
 
 mkdir -p $dir/log
 
-
-# Set some variables
-splice_opts=`cat $alidir/splice_opts 2>/dev/null`
-cp $alidir/splice_opts $dir 2>/dev/null
-cp $alidir/final.mat $dir 2>/dev/null # any LDA matrix...
-cp $alidir/tree $dir
-
-
 ###### PREPARE FEATURES ######
 echo
 echo "# PREPARING FEATURES"
 #read the features
-if [ -z $feat_type ]; then
-  if [ -f $alidir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
+if [ -z "$feat_type" ]; then
+  if [ ! -z "$transdir" ] && [ -f $transdir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
 fi
 echo "$0: feature type is $feat_type"
+
+if [ $feat_type == lda ]; then
+  splice_opts=`cat $transdir/splice_opts 2>/dev/null`
+  cp $transdir/splice_opts $dir 2>/dev/null
+  cp $transdir/final.mat $dir 2>/dev/null # any LDA matrix...
+  cp $transdir/tree $dir
+fi
+
 
 # shuffle the list
 if [ -z $semidata ]; then
@@ -140,7 +141,7 @@ case $feat_type in
   raw) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- |"
    ;;
   lda) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
-    cp $alidir/final.mat $dir    
+    cp $transdir/final.mat $dir    
    ;;
   fmllr) feats="scp:$dir/shuffle.scp"
    ;;
@@ -148,18 +149,18 @@ case $feat_type in
    ;;
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
-if [ -f $alidir/trans.1 ] && [ $feat_type == "lda" ]; then
+if [ -f $transdir/trans.1 ] && [ $feat_type == "lda" ]; then
   if [ -z $semitransdir ]; then
-    echo "$0: using transforms from $alidir"
-    feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/trans.*|' ark:- ark:- |"
+    echo "$0: using transforms from $transdir"
+    feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/trans.*|' ark:- ark:- |"
   else
-    echo "$0: using transforms from $alidir and $semitransdir"
-    feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/trans.* $semitransdir/trans.* |' ark:- ark:- |"
+    echo "$0: using transforms from $transdir and $semitransdir"
+    feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/trans.* $semitransdir/trans.* |' ark:- ark:- |"
   fi
 fi
-if [ -f $alidir/raw_trans.1 ] && [ $feat_type == "raw" ]; then
-  echo "$0: using raw-fMLLR transforms from $alidir"
-  feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $alidir/raw_trans.*|' ark:- ark:- |"
+if [ -f $transdir/raw_trans.1 ] && [ $feat_type == "raw" ]; then
+  echo "$0: using raw-fMLLR transforms from $transdir"
+  feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/raw_trans.*|' ark:- ark:- |"
 fi
 
 #re-save the shuffled features, so they are stored sequentially on the disk in /tmp/

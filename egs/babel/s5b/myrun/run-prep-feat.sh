@@ -13,12 +13,12 @@ echo "$0 $@"
 
 # Begin configuration
 type=train      # train, dev10h, eval, trainall, dev10h, unsup
-feattype=plp    # plp, swd, mfcc, flow, msgpp, rastapp, bn, tandem
+feattype=plp    # plp, swd, mfcc, flow, msgpp, rastapp, bn, tandem, fbank
 srctype=
 srctype2=
 bnnet=
 cmd=./cmd.sh
-segmode=uem     # uem, pem, unseg, seg
+segmode=pem     # pem, unseg, seg
 segfile=
 # End configuration
 
@@ -40,7 +40,6 @@ nj=$(eval echo "\$${type}_nj")
 datadir=$(eval echo "\$${type}_data_dir")
 datalist=$(eval echo "\$${type}_data_list")
 featscp=$(eval echo "\$${feattype}_${type}_featscp")
-#swdfeatscp=$(eval echo "\$swd_${type}_featscp")
 
 [ "$srctype" == "plp" ] && srcext=plp_pitch || srcext=$srctype
 [ "$srctype2" == "plp" ] && srcext2=plp_pitch || srcext2=$srctype2
@@ -63,18 +62,8 @@ echo objdata $objdata
 
 if [ ! -f data/$objdata/.done ]; then
   cp -rfT data/${type} data/${objdata}
-  # all non-plp feature requires a swd.feats.scp
-  if [ "$feattype" != "mfcc" ] && [ "$feattype" != "plp" ] && [[ ! "$feattype" =~ "bn" ]] && [ "$feattype" != "fmllr" ] && [ $tandemmode ] ; then
-    [ -f "$featscp" ] || die "no featscp file $featscp"
-    cp $featscp data/$objdata/swd.feats.scp
-  fi
-  # on the other hand, all non traindata requires segmentation, uem mode use segmentation based on swd feature, pem mode use segfile
   if [[ "$type" != "train" ]]; then
-    if [ $segmode == "uem" ] ; then
-      echo "$segmode mode: preparing segments using $swdfeatscp"
-      mylocal/scp2cmudb.py < $swdfeatscp > data/$objdata/cmudb
-      mylocal/cmu_uem2kaldi_dir.sh --filelist $datalist data/$objdata/cmudb $datadir data/$objdata
-    elif [ $segmode == "pem" ]; then
+    if [ $segmode == "pem" ]; then
       [ ! -f $segfile ] && die "no segmentation file $segfile provided"
       echo "$segmode mode: preparing segments using $segfile"
       mylocal/kaldiseg_posprocess.sh --filelist $datalist $segfile $datadir data/$objdata
@@ -86,31 +75,15 @@ if [ ! -f data/$objdata/.done ]; then
     elif [ $segmode != "seg" ]; then
       die "unknown segmode $segmode"
     fi
-    if [ "$feattype" != "mfcc" ] && [ "$feattype" != "plp" ] && [[ ! "$feattype" =~ "bn" ]] && [[ "$feattype" != "fmllr" ]] && [ ! $tandemmode ]; then  
-      # update swd.feats.scp based on the new segments
-      echo "fix swd.feats.scp using segments from $swdfeatscp"
-      mv data/$objdata/swd.feats.scp data/$objdata/swd.feats.scp.old
-      mylocal/fixscp.sh data/$objdata/swd.feats.scp.old data/$objdata/segments > data/$objdata/swd.feats.scp
-    fi 
   fi
 
-  if [ "$feattype" == "swd" ]; then
-    mylocal/make_swordfish_feat.sh --cmd $cmd --nj $nj --swd-feat-range ':14,45:' data/$objdata exp/make_${featext}/$objdata feature/swd
-  elif [ "$feattype" == "mfcc" ]; then
+  if [ "$feattype" == "mfcc" ]; then
     steps/make_mfcc_pitch.sh --cmd $cmd --nj $nj data/$objdata exp/make_${featext}/$objdata feature/$featext
-  elif [ "$feattype" == "flow" ]; then
-    mylocal/make_swordfish_feat.sh --cmd $cmd --nj $nj --swd-feat-range ':17' data/$objdata exp/make_${featext}/$objdata feature/$featext
-  elif [ "$feattype" == "msgpp" ]; then
-    mylocal/make_swordfish_feat.sh --cmd $cmd --nj $nj --swd-feat-range ':29' data/$objdata exp/make_${featext}/$objdata feature/$featext
-  elif [ "$feattype" == "rastapp" ]; then
-    mylocal/make_swordfish_feat.sh --cmd $cmd --nj $nj --swd-feat-range ':14' data/$objdata exp/make_${featext}/$objdata feature/$featext
-  elif [ "$feattype" == "krylovnn" ] ; then
-    mylocal/make_swordfish_feat.sh --cmd $cmd --nj $nj --swd-feat-range ':29' data/$objdata exp/make_${featext}/$objdata feature/$featext
   elif [ "$feattype" == "plp" ]; then
     steps/make_plp_pitch.sh --cmd $cmd --nj $nj data/$objdata exp/make_${featext}/$objdata feature/$featext
+  elif [ "$feattype" == "fbank" ]; then
+    steps/make_fbank_pitch.sh --cmd $cmd --nj $nj data/$objdata exp/make_${featext}/$objdata feature/$featext
   elif [[ "$feattype" =~ "bn" ]]; then
-    # traps feature?
-    #steps/make_bn_feats.sh --cmd $cmd --nj $nj data/$objdata data/$srcdata exp/$bnnet exp/make_${featext}/$objdata feature/$featext
     # fmllr feature
     if [[ $type == "train" ]]; then
       transform_dir=exp/${srcdata}_tri5_ali

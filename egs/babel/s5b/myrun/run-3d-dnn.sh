@@ -15,6 +15,7 @@ stage2=100
 feattype=plp
 cmd=./cmd.sh
 semi=false
+nnetfeattype=lda
 # End configuration
 
 . ./path.sh
@@ -32,6 +33,7 @@ traindata=train_$feattype
 
 dbndir=exp/${traindata}_tri8_dbn
 [ $semi == true ] && dbndir=${dbndir}_semi
+[ $nnetfeattype == lda ] || dbndir=${dbndir}_$nnetfeattype
 if [ $stage -le 0 ]; then
 if [ ! -f $dbndir/.done ]; then
   echo "-----------------------------------------------------------------"
@@ -39,10 +41,10 @@ if [ ! -f $dbndir/.done ]; then
   echo "-----------------------------------------------------------------"
   if [ $semi == false ]; then
     $cuda_cmd $dbndir/pretrain_dbn.log \
-    mysteps/pretrain_dbn.sh data/${traindata} exp/${traindata}_tri5_ali $dbndir
+    mysteps/pretrain_dbn.sh --feat-type $nnetfeattype --transdir exp/${traindata}_tri5_ali data/${traindata} $dbndir
   else
     $cuda_cmd $dbndir/pretrain_dbn.log \
-    mysteps/pretrain_dbn.sh --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5/decode_unsup_pem_${feattype} data/${traindata} exp/${traindata}_tri5_ali $dbndir
+    mysteps/pretrain_dbn.sh --feat-type $nnetfeattype --transdir exp/${traindata}_tri5_ali --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5/decode_unsup_pem_${feattype} data/${traindata} $dbndir
   fi
   touch $dbndir/.done
 fi
@@ -50,6 +52,7 @@ fi
 
 dnndir=exp/${traindata}_tri8_dnn
 [ $semi == true ] && dnndir=${dnndir}_semi
+[ $nnetfeattype == lda ] || dnndir=${dnndir}_$nnetfeattype
 if [ $stage -le 1 ]; then
 if [ ! -f $dnndir/.done ]; then
   echo "-----------------------------------------------------------------"
@@ -57,10 +60,10 @@ if [ ! -f $dnndir/.done ]; then
   echo "-----------------------------------------------------------------"
   if [ $semi == false ]; then
     $cuda_cmd $dnndir/train_nnet.log \
-    mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 data/${traindata} exp/${traindata}_tri5_ali $dnndir
+    mysteps/train_nnet.sh --feat-type $nnetfeattype --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 data/${traindata} exp/${traindata}_tri5_ali $dnndir
   else
     $cuda_cmd $dnndir/train_nnet.log \
-    mysteps/train_nnet.sh --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn \
+    mysteps/train_nnet.sh --feat-type $nnetfeattype --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn \
       --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 --semidata data/unsup_pem_${feattype} \
       --semitransdir exp/${traindata}_tri5/decode_unsup_pem_${feattype} \
       --semialidir exp/${traindata}_tri6_nnet/decode_unsup_pem_${feattype} \
@@ -69,6 +72,8 @@ if [ ! -f $dnndir/.done ]; then
   touch $dnndir/.done
 fi
 fi
+
+exit;
 
 alidir=${dnndir}_ali
 if [ $stage -le 2 ]; then
@@ -80,7 +85,6 @@ if [ ! -f $alidir/.done ]; then
   touch $alidir/.done
 fi
 fi
-exit;
 
 dnnredir=${dnndir}2
 [ $semi == true ] && dnnredir=${dnnredir}_semi

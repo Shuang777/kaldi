@@ -221,7 +221,7 @@ if [ -d $dnndir ] && [[ ! -f $decode/.done || ! -f $decode/.done.score ]]; then
 
   [ ! -f $decode/.done ] && dnnstage=0 || dnnstage=1      # do decode if not done, do scoring depend on skip-scoring otherwise
   [[ $typedata =~ "semi_fmllr" ]] && $feattype_opt="--feat-type fmllr"
-  mysteps/decode_nnet.sh --cmd "$decode_cmd -l mem_free=6G" --nj $type_nj --latbeam $dnnlatbeam --acwt 0.0833 \
+  mysteps/decode_nnet.sh --feat-type $nnetfeattype --cmd "$decode_cmd -l mem_free=6G" --nj $type_nj --latbeam $dnnlatbeam --acwt 0.0833 \
     --scoring-opts "--min-lmwt 6 --max-lmwt 16 --wip 0.2" --stage $dnnstage $feattype_opt --feat-type "$dnnfeattype" \
     --transform-dir exp/${traindata}_tri5${trainlangext}/decode_${typedata}${langext}${acwtext} --skip-scoring $skip_scoring \
     exp/${traindata}_tri5${trainlangext}/graph${langext} data/$typedata $decode

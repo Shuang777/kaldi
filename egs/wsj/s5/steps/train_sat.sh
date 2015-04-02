@@ -31,6 +31,7 @@ max_iter_inc=25 # Last iter to increase #Gauss on.
 power=0.2 # Exponent for number of gaussians according to occurrence counts
 cluster_thresh=-1  # for build-tree control final bottom-up clustering of leaves
 phone_map=
+use_trans=true
 train_tree=true
 # End configuration section.
 
@@ -97,7 +98,7 @@ case $feat_type in
 esac
 
 ## Get initial fMLLR transforms (possibly from alignment dir)
-if [ -f $alidir/trans.1 ]; then
+if [ $use_trans == true ] && [ -f $alidir/trans.1 ]; then
   echo "$0: Using transforms from $alidir"
   feats="$sifeats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark,s,cs:$alidir/trans.JOB ark:- ark:- |"
   cur_trans_dir=$alidir
