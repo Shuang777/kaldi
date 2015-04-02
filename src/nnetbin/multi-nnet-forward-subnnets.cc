@@ -1,4 +1,4 @@
-// nnetbin/multi-nnet-forwardback.cc
+// nnetbin/multi-nnet-forward.cc
 
 // Copyright 2015  International Computer Science Institute (Author: Hang Su)
 
@@ -28,25 +28,24 @@
 
 
 int main(int argc, char *argv[]) {
-  using namespace kaldi;
-  using namespace kaldi::nnet1;
-  typedef kaldi::int32 int32;
-
   try {
+    using namespace kaldi;
+    using namespace kaldi::nnet1;
+    typedef kaldi::int32 int32;
     const char *usage =
-        "Perform forwardback pass through Multi Neural Network.\n"
+        "Perform forward pass through Multi Neural Network.\n"
         "\n"
-        "Usage:  multi-nnet-propagate [options] <model-in> <feature-rspecifier-1> ... <targets-rspecifier> <feature-wspecifier>\n"
+        "Usage:  multi-nnet-forward [options] <model-in> <feature-rspecifier-list> <feature-wspecifier>\n"
         "e.g.: \n"
-        " multi-nnet-propagate multi_nnet ark:features1.ark ... ark:targets.ark ark:mlpoutput.ark\n";
+        " multi-nnet-forward --subnnet-id=0 multi_nnet feats.list ark:mlpoutput.ark\n";
 
     ParseOptions po(usage);
 
     PdfPriorOptions prior_opts;
     prior_opts.Register(&po);
 
-    std::string feature_transform;
-    po.Register("feature-transform", &feature_transform, "Feature transform in front of main network (in nnet format)");
+    std::string feature_transform_list;
+    po.Register("feature-transform_list", &feature_transform_list, "Feature transform in front of main network (in nnet format)");
 
     bool no_softmax = false;
     po.Register("no-softmax", &no_softmax, "No softmax on MLP output (or remove it if found), the pre-softmax activations will be used as log-likelihoods, log-priors will be subtracted");
@@ -56,23 +55,31 @@ int main(int argc, char *argv[]) {
     std::string use_gpu="no";
     po.Register("use-gpu", &use_gpu, "yes|no|optional, only has effect if compiled with CUDA"); 
     
-    std::string subnnet_ids_rspecifier;
-    po.Register("subnnet-ids", &subnnet_ids_rspecifier, "subnnet ids for multiple objective learning");
+    int32 subnnet_id = 0;
+    po.Register("subnnet-id", &subnnet_id, "subnnet id for output layer selection");
 
     po.Read(argc, argv);
 
-    if (po.NumArgs() < 4) {
+    if (po.NumArgs() != 3) {
       po.PrintUsage();
       exit(1);
     }
 
     std::string model_filename = po.GetArg(1);
+    std::string feature_list = po.GetArg(2);
+    std::string feature_wspecifier = po.GetArg(3);
+
     std::vector<std::string> feature_rspecifiers;
-    for (int i=2; i<po.NumArgs()-1; i++) {
-      feature_rspecifiers.push_back(po.GetArg(i));
+
+    {
+      bool featlist_binary = false;
+      Input ki(feature_list, &featlist_binary);
+      std::istream &is = ki.Stream();
+      string feature_rspecifier;
+      while (getline(is, feature_rspecifier)) {
+        feature_rspecifiers.push_back(feature_rspecifier);
+      }
     }
-    std::string targets_rspecifier = po.GetArg(po.NumArgs()-1),
-                feature_wspecifier = po.GetArg(po.NumArgs());
 
     const int32 num_features = feature_rspecifiers.size();
 
@@ -83,16 +90,15 @@ int main(int argc, char *argv[]) {
 #endif
 
     std::vector<Nnet> nnet_transfs(num_features);
-    if (feature_transform != "") {
-      if (num_features == 1) {
-        nnet_transfs[0].Read(feature_transform);
-      } else {
-        for (int32 i=0; i<num_features; i++) {
-          char intStr[5];
-          sprintf (intStr, "%d", i);
-          string str = string(intStr);
-          nnet_transfs[i].Read(feature_transform+"."+str);
-        }
+    if (feature_transform_list != "") {
+      bool transform_list_binary = false;
+      Input ki(feature_transform_list, &transform_list_binary);
+      std::istream &is = ki.Stream();
+      string feature_transform;
+      int32 i = 0;
+      while (getline(is, feature_transform)) {
+        nnet_transfs[i].Read(feature_transform);
+        i++;
       }
     }
 
@@ -101,7 +107,7 @@ int main(int argc, char *argv[]) {
     //optionally remove softmax
     if (no_softmax && multi_nnet.GetLastComponent().GetType() == kaldi::nnet1::Component::kSoftmax) {
       KALDI_LOG << "Removing softmax from the nnet " << model_filename;
-      multi_nnet.RemoveLastSoftmax();
+      multi_nnet.RemoveSubNnetComponent(multi_nnet.NumSubNnetComponents()-1);
     }
     //check for some non-sense option combinations
     if (apply_log && no_softmax) {
@@ -130,11 +136,6 @@ int main(int argc, char *argv[]) {
     for (int32 i=0; i<num_features; i++) {
       feature_readers[i].Open(feature_rspecifiers[i]);
     }
-    SequentialPosteriorReader targets_reader(targets_rspecifier);
-    SequentialInt32VectorReader subnnet_ids_reader;
-    if (subnnet_ids_rspecifier != "") {
-      subnnet_ids_reader.Open(subnnet_ids_rspecifier);
-    }
     BaseFloatMatrixWriter feature_writer(feature_wspecifier);
 
     std::vector<CuMatrix<BaseFloat> > feats(num_features);
@@ -142,31 +143,23 @@ int main(int argc, char *argv[]) {
     for (int32 i=0; i<num_features; i++) {
       feats_transfs[i] = new CuMatrix<BaseFloat>();
     }
-    std::vector<const CuMatrixBase<BaseFloat> *> nnet_ins(num_features);
-    std::vector<CuMatrix<BaseFloat> *> nnet_out;
-    std::vector<CuMatrix<BaseFloat> *> obj_diff(multi_nnet.NumOutputObjs());
-    for (int32 i=0; i<multi_nnet.NumOutputObjs(); i++) {
-      obj_diff[i] = new CuMatrix<BaseFloat>();
-    }
-    Matrix<BaseFloat> nnet_backout_host;
-    std::vector<CuMatrix<BaseFloat>* > nnet_backout(num_features);
-    for (int32 i=0; i<num_features; i++) {
-      nnet_backout[i] = new CuMatrix<BaseFloat> ();
-    }
+
+    CuMatrix<BaseFloat> nnet_out;
+    Matrix<BaseFloat> nnet_out_host;
 
     Timer time;
     double time_now = 0;
     int32 num_done = 0;
     // iterate over all feature files
     while (!feature_readers[0].Done()) {
-      // read
       std::string feat_key = feature_readers[0].Key();
       for (int32 i=0; i<num_features; i++) {
         const Matrix<BaseFloat> &mat = feature_readers[i].Value();
+
         if (feature_readers[i].Key() != feat_key) {
           KALDI_ERR << "Utterance key " << feature_readers[i].Key() << " does not match that in feature-rspecifier=1 " << feat_key;
         }
-        if (i==0) {
+        if (i == 0) {
           KALDI_VLOG(2) << "Processing utterance " << num_done+1 
                         << ", " << feature_readers[i].Key() 
                         << ", " << mat.NumRows() << "frm";
@@ -183,61 +176,36 @@ int main(int argc, char *argv[]) {
         // fwd-pass
         nnet_transfs[i].Feedforward(feats[i], feats_transfs[i]);
       }
-      for (int32 i=0; i<feats_transfs.size(); i++) {
-        nnet_ins[i] = feats_transfs[i];
-      }
-
-      multi_nnet.Propagate(nnet_ins, nnet_out);
+ 
+      // fwd-pass
+      multi_nnet.Feedforward(feats_transfs, subnnet_id, &nnet_out);
       
       // convert posteriors to log-posteriors
       if (apply_log) {
-        for (int32 i=0; i< nnet_out.size(); i++) {
-          nnet_out[i]->ApplyLog();
-        }
+        nnet_out.ApplyLog();
       }
      
       // subtract log-priors from log-posteriors to get quasi-likelihoods
       if (prior_opts.class_frame_counts != "" && (no_softmax || apply_log)) {
-        for (int32 i=0; i< nnet_out.size(); i++) {
-          pdf_prior.SubtractOnLogpost(nnet_out[i]);
-        }
+        pdf_prior.SubtractOnLogpost(&nnet_out);
       }
-
-      Xent xent;
-      Posterior targets = targets_reader.Value();
-      targets_reader.Next();
-
-      std::vector<int32> frm_subnnet_ids;
-      if(subnnet_ids_rspecifier != "") {
-        frm_subnnet_ids = subnnet_ids_reader.Value();
-        subnnet_ids_reader.Next();
-      } else {
-        frm_subnnet_ids.assign(nnet_ins[0]->NumRows(),0);
-      }
-
-      xent.Eval(nnet_out, targets, frm_subnnet_ids, obj_diff);
- 
-      multi_nnet.Backpropagate(obj_diff, nnet_backout);
      
-      for (int32 i=0; i<nnet_backout.size(); i++) {
-        //download from GPU
-        nnet_backout_host.Resize(nnet_backout[i]->NumRows(), nnet_backout[i]->NumCols());
-        nnet_backout[i]->CopyToMat(&nnet_backout_host);
+      //download from GPU
+      nnet_out_host.Resize(nnet_out.NumRows(), nnet_out.NumCols());
+      nnet_out.CopyToMat(&nnet_out_host);
 
-        //check for NaN/inf
-        for (int32 r = 0; r < nnet_backout_host.NumRows(); r++) {
-          for (int32 c = 0; c < nnet_backout_host.NumCols(); c++) {
-            BaseFloat val = nnet_backout_host(r,c);
-            if (val != val) KALDI_ERR << "NaN in NNet output of : " << feature_readers[0].Key();
-            if (val == std::numeric_limits<BaseFloat>::infinity())
-              KALDI_ERR << "inf in NNet coutput of : " << feature_readers[0].Key();
-          }
+      //check for NaN/inf
+      for (int32 r = 0; r < nnet_out_host.NumRows(); r++) {
+        for (int32 c = 0; c < nnet_out_host.NumCols(); c++) {
+          BaseFloat val = nnet_out_host(r,c);
+          if (val != val) KALDI_ERR << "NaN in NNet output of : " << feature_readers[0].Key();
+          if (val == std::numeric_limits<BaseFloat>::infinity())
+            KALDI_ERR << "inf in NNet coutput of : " << feature_readers[0].Key();
         }
-
-        // write
-        feature_writer.Write(feature_readers[0].Key(), nnet_backout_host);
-
       }
+
+      // write
+      feature_writer.Write(feature_readers[0].Key(), nnet_out_host);
 
       // progress log
       if (num_done % 100 == 0) {
@@ -247,7 +215,7 @@ int main(int argc, char *argv[]) {
                       << " frames per second.";
       }
       num_done++;
-      tot_t += nnet_backout_host.NumRows();
+      tot_t += nnet_out_host.NumRows();
 
       for (int32 i=0; i<num_features; i++) {
         feature_readers[i].Next();

@@ -495,6 +495,7 @@
 /src/nnetbin/multi-nnet-propagate
 /src/nnetbin/multi-nnet-propagateback
 /src/nnetbin/multi-nnet-train-frmshuff-subnnets
+/src/nnetbin/multi-nnet-forward-subnnets
 
 # /src/nnet2/
 /src/nnet2/.depend.mk

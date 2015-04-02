@@ -35,9 +35,9 @@ int main(int argc, char *argv[]) {
     const char *usage =
         "Perform forward pass through Multi Neural Network.\n"
         "\n"
-        "Usage:  multi-nnet-forward [options] <model-in> <subnnet-id> <feature-rspecifier> <feature-wspecifier>\n"
+        "Usage:  multi-nnet-forward [options] <model-in> <feature-rspecifier> <feature-wspecifier>\n"
         "e.g.: \n"
-        " multi-nnet-forward multi_nnet 0 ark:features.ark ark:mlpoutput.ark\n";
+        " multi-nnet-forward multi_nnet ark:features.ark ark:mlpoutput.ark\n";
 
     ParseOptions po(usage);
 
@@ -54,18 +54,20 @@ int main(int argc, char *argv[]) {
 
     std::string use_gpu="no";
     po.Register("use-gpu", &use_gpu, "yes|no|optional, only has effect if compiled with CUDA"); 
+    
+    int32 subnnet_id = 0;
+    po.Register("subnnet-id", &subnnet_id, "subnnet id for output layer selection (defalut = 0)");
 
     po.Read(argc, argv);
 
-    if (po.NumArgs() != 4) {
+    if (po.NumArgs() != 3) {
       po.PrintUsage();
       exit(1);
     }
 
     std::string model_filename = po.GetArg(1);
-    int32 subnnet_id = atoi(po.GetArg(2).c_str());
-    std::string feature_rspecifier = po.GetArg(3),
-        feature_wspecifier = po.GetArg(4);
+    std::string feature_rspecifier = po.GetArg(2),
+        feature_wspecifier = po.GetArg(3);
         
 
     //Select the GPU
@@ -82,8 +84,7 @@ int main(int argc, char *argv[]) {
     MultiNnet multi_nnet;
     multi_nnet.Read(model_filename);
     //optionally remove softmax
-    if (no_softmax && multi_nnet.GetSubNnetComponent(subnnet_id, multi_nnet.NumSubNnetComponents()-1).GetType() ==
-        kaldi::nnet1::Component::kSoftmax) {
+    if (no_softmax && multi_nnet.GetLastComponent().GetType() == kaldi::nnet1::Component::kSoftmax) {
       KALDI_LOG << "Removing softmax from the nnet " << model_filename;
       multi_nnet.RemoveSubNnetComponent(multi_nnet.NumSubNnetComponents()-1);
     }
@@ -91,8 +92,7 @@ int main(int argc, char *argv[]) {
     if (apply_log && no_softmax) {
       KALDI_ERR << "Nonsense option combination : --apply-log=true and --no-softmax=true";
     }
-    if (apply_log && multi_nnet.GetSubNnetComponent(subnnet_id,multi_nnet.NumSubNnetComponents()-1).GetType() !=
-        kaldi::nnet1::Component::kSoftmax) {
+    if (apply_log && multi_nnet.GetLastComponent().GetType() != kaldi::nnet1::Component::kSoftmax) {
       KALDI_ERR << "Used --apply-log=true, but nnet " << model_filename 
                 << " does not have <softmax> as last component!";
     }
