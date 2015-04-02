@@ -141,6 +141,10 @@ class VectorBase {
   /// Apply soft-max to vector and return normalizer (log sum of exponentials).
   /// This is the same as: \f$ x(i) = exp(x(i)) / \sum_i exp(x(i)) \f$
   Real ApplySoftMax();
+  
+  /// Compute the entropy of the vector
+  Real ComputeEntropy() const;
+  void ComputeEntropyPerRow(const MatrixBase<Real> &mat);
 
   /// Sets each element of *this to the tanh of the corresponding element of "src".
   void Tanh(const VectorBase<Real> &src);

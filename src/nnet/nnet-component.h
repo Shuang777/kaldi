@@ -79,7 +79,8 @@ class Component {
     kFramePoolingComponent, 
     kParallelComponent,
 
-    kBlockAddComponent
+    kBlockAdd = 0x0A00,
+    kInverseEntropy
   } ComponentType;
   /// A pair of type and marker 
   struct key_value {

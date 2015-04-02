@@ -29,16 +29,16 @@
 namespace kaldi {
 namespace nnet1 {
 
-class BlockAddComponent : public Component {
+class BlockAdd : public Component {
  public:
-  BlockAddComponent (int32 dim_in, int32 dim_out) 
+  BlockAdd (int32 dim_in, int32 dim_out) 
     : Component(dim_in, dim_out)
   { }
-  ~BlockAddComponent()
+  ~BlockAdd()
   { }
 
-  Component* Copy() const { return new BlockAddComponent(*this); }
-  ComponentType GetType() const { return kBlockAddComponent; }
+  Component* Copy() const { return new BlockAdd(*this); }
+  ComponentType GetType() const { return kBlockAdd; }
 
   void PropagateFnc(const CuMatrixBase<BaseFloat> &in, CuMatrixBase<BaseFloat> *out) {
     out->CopyFromMat(in);
@@ -65,6 +65,45 @@ class BlockAddComponent : public Component {
   }
 };
 
+class InverseEntropy : public Component {
+ public:
+  InverseEntropy (int32 dim_in, int32 dim_out) 
+    : Component(dim_in, dim_out)
+  { }
+  ~InverseEntropy()
+  { }
+
+  Component* Copy() const { return new InverseEntropy(*this); }
+  ComponentType GetType() const { return kInverseEntropy; }
+
+  void PropagateFnc(const CuMatrixBase<BaseFloat> &in, CuMatrixBase<BaseFloat> *out) {
+    out->CopyFromMat(in);
+  }
+  
+  void PropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in, CuMatrixBase<BaseFloat> *out) {
+    int32 num_samples = in[0].back().NumRows();
+    inverse_entropy_.Resize(in.size(), num_samples, kSetZero);
+    for (int32 i=0; i<in.size(); i++) {
+      inverse_entropy_.Row(i).ComputeEntropyPerRow(in[0].back());
+    }
+  }
+
+  void BackpropagateFnc(const CuMatrixBase<BaseFloat> &in, const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff, CuMatrixBase<BaseFloat> *in_diff) {
+    in_diff->CopyFromMat(out_diff);
+  }
+
+  void BackpropagateFnc(const std::vector<std::vector<CuMatrix<BaseFloat> > > &in,
+                        const CuMatrixBase<BaseFloat> &out,
+                        const CuMatrixBase<BaseFloat> &out_diff,
+                        std::vector<std::vector<CuMatrix<BaseFloat> > > &in_diff) {
+    for (int32 i=0; i<in.size(); i++) {
+      in_diff[i].back().AddMat(1.0, out_diff);
+    }
+  }
+ private:
+  CuMatrix<BaseFloat> inverse_entropy_;   // each row records the row-entropy for one feature input (note that NumCol of inverse_entropy_ == NumRow of in[0].back())
+};
 
 } // namespace nnet1
 } // namespace kaldi

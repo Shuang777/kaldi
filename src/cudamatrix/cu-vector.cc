@@ -296,6 +296,47 @@ void CuVectorBase<Real>::ApplySoftMax() {
 }
 
 template<typename Real>
+Real CuVectorBase<Real>::ComputeEntropy() const {
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    if (dim_ == 0) return 0;
+    Timer tim;
+    size_t dimBlock = dim_ > CU1DBLOCK ? CU1DBLOCK : dim_; // for cuda_softmax_reduce function, dimBlock value is fixed min(CU1DBLOCK, dim) , represent CU1DBLOCK threads reduce a row at the same time.
+    size_t dimGrid = 1;       // dimGrid value represent the number of rows 
+    ::MatrixDim dim = { 1, this->dim_, this->dim_};
+    cuda_compute_entropy(dimGrid, dimBlock, data_, data_, dim);//actually dim is not stride...
+    CU_SAFE_CALL(cudaGetLastError());
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+    return 0;
+  } else
+#endif
+  {
+    return Vec().ComputeEntropy();
+  }
+}
+
+template<typename Real>
+void CuVectorBase<Real>::ComputeEntropyPerRow(const CuMatrixBase<Real> &mat) {
+  KALDI_ASSERT(this->dim_ == mat.NumCols());
+#if HAVE_CUDA == 1 
+  if (CuDevice::Instantiate().Enabled()) {
+    Timer tim;
+    size_t dimBlock = mat.NumCols() > CU1DBLOCK ? CU1DBLOCK : mat.NumCols();
+    size_t dimGrid = mat.NumRows();
+    cuda_compute_entropy(dimGrid, dimBlock, mat.Data(), data_, mat.Dim());
+    CU_SAFE_CALL(cudaGetLastError());
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+  #endif
+  {
+    for(MatrixIndexT r = 0; r < mat.NumRows(); r++) {
+      data_[r] = mat.Row(r).ComputeEntropy();
+    }
+  }
+}
+
+template<typename Real>
 MatrixIndexT CuVectorBase<Real>::ApplyFloor(Real floor_val) {
   MatrixIndexT num_floored = 0;
 #if HAVE_CUDA == 1

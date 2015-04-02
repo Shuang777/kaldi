@@ -119,6 +119,9 @@ class CuVectorBase {
   void InvertElements(); 
 
   void ApplySoftMax();
+  Real ComputeEntropy() const;
+  void ComputeEntropyPerRow(const CuMatrixBase<Real> &mat);
+
   void ApplyExp();
   void ApplyLog();
   MatrixIndexT ApplyFloor(Real floor_val);

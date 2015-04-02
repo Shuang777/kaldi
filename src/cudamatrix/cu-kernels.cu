@@ -1617,6 +1617,38 @@ static void _softmax_reduce(Real*y, const Real*x, MatrixDim d, int src_stride) {
 
 }
 
+template<typename Real>
+__global__
+static void _compute_entropy(const Real*y, Real*x, MatrixDim d) {
+  int j = blockIdx.x;
+  int THREADS = blockDim.x;
+  if (j >= d.rows) return;
+
+  __shared__ Real aux[CU1DBLOCK];
+  int steps = (d.cols - 1) / THREADS + 1;
+
+  // subtract max, apply exp, sum up...
+  aux[threadIdx.x] = y[threadIdx.x+j*d.stride] * log(y[threadIdx.x+j*d.stride]);
+  for(int i=1; i<steps; i++) {
+    if(threadIdx.x+i*THREADS < d.cols) {
+      aux[threadIdx.x] += y[threadIdx.x+i*THREADS+j*d.stride] * log(y[threadIdx.x+i*THREADS+j*d.stride]);
+    }
+  }
+  int nTotalThreads = THREADS;
+  __syncthreads();
+  while(nTotalThreads > 1) {
+    int halfPoint = ((1+nTotalThreads) >> 1);   // divide by two
+    // only the first half of the threads will be active.
+    if (threadIdx.x < halfPoint)  {
+      // Get the shared value stored by another thread
+      if(threadIdx.x+halfPoint < nTotalThreads)
+        aux[threadIdx.x] += aux[threadIdx.x + halfPoint];
+    }
+    __syncthreads();
+    nTotalThreads = ((1+nTotalThreads) >> 1);   // divide by two.
+  }
+  x[j] = aux[0];
+}
 
 template<typename Real>
 __global__
@@ -2143,6 +2175,9 @@ void cudaF_softmax_reduce (size_t Gr, size_t Bl, float* y, const float* x, Matri
   _softmax_reduce<<<Gr,Bl>>>(y, x, d, src_stride);
 }
 
+void cudaF_compute_entropy (size_t Gr, size_t Bl, const float* y, float* x, MatrixDim d) {
+  _compute_entropy<<<Gr,Bl>>>(y, x, d);
+}
 
 void cudaF_splice(dim3 Gr, dim3 Bl, float* y, const float* x, const int32_cuda* off, MatrixDim d_out, MatrixDim d_in) {
   _splice<<<Gr,Bl>>>(y,x,off,d_out,d_in); 
@@ -2541,6 +2576,10 @@ void cudaD_diff_tanh (dim3 Gr, dim3 Bl, double* eout, const double* e, const dou
 
 void cudaD_softmax_reduce (size_t Gr, size_t Bl, double* y, const double* x, MatrixDim d, int src_stride) {
   _softmax_reduce<<<Gr,Bl>>>(y, x, d, src_stride);
+}
+
+void cudaD_compute_entropy (size_t Gr, size_t Bl, const double* y, double* x, MatrixDim d) {
+  _compute_entropy<<<Gr,Bl>>>(y, x, d);
 }
 
 void cudaD_splice(dim3 Gr, dim3 Bl, double* y, const double* x, const int32_cuda* off, MatrixDim d_out, MatrixDim d_in) {

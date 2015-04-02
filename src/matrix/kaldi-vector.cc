@@ -845,6 +845,22 @@ Real VectorBase<Real>::ApplySoftMax() {
   return max + Log(sum);
 }
 
+template<typename Real>
+Real VectorBase<Real>::ComputeEntropy() const {
+  Real entropy = 0.0;
+  for (MatrixIndexT i = 0; i < dim_; i++) {
+    entropy -= data_[i] * Log(data_[i]);
+  }
+  return entropy;
+}
+
+template<typename Real>
+void VectorBase<Real>::ComputeEntropyPerRow(const MatrixBase<Real> &mat) {
+  for (MatrixIndexT i = 0; i < mat.NumRows(); i++) {
+    data_[i] = mat.Row(i).ComputeEntropy();
+  }
+}
+
 #ifdef HAVE_MKL
 template<>
 void VectorBase<float>::Tanh(const VectorBase<float> &src) {

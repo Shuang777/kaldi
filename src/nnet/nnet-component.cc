@@ -69,7 +69,8 @@ const struct Component::key_value Component::kMarkerMap[] = {
   { Component::kSentenceAveragingComponent,"<SentenceAveragingComponent>"},
   { Component::kFramePoolingComponent, "<FramePoolingComponent>"},
   { Component::kParallelComponent, "<ParallelComponent>"},
-  { Component::kBlockAddComponent, "<BlockAddComponent>"},
+  { Component::kBlockAdd, "<BlockAdd>"},
+  { Component::kInverseEntropy, "<InverseEntropy>"},
 };
 
 
@@ -167,8 +168,11 @@ Component* Component::NewComponentOfType(ComponentType comp_type,
     case Component::kParallelComponent :
       ans = new ParallelComponent(input_dim, output_dim);
       break;
-    case Component::kBlockAddComponent :
-      ans = new BlockAddComponent(input_dim, output_dim);
+    case Component::kBlockAdd :
+      ans = new BlockAdd(input_dim, output_dim);
+      break;
+    case Component::kInverseEntropy :
+      ans = new InverseEntropy(input_dim, output_dim);
       break;
     case Component::kUnknown :
     default :

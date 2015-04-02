@@ -1170,6 +1170,8 @@ void CuMatrixBase<Real>::ApplySoftMaxPerRow(const CuMatrixBase<Real> &src) {
   }
 }
 
+
+
 // DiffSigmoid(Ein, Y, Eout) -> Eout.DiffSigmoid(Y, Ein).
 template<typename Real> // Eout -> *this, Ein -> diff, Y -> value
 void CuMatrixBase<Real>::DiffSigmoid(const CuMatrixBase<Real> &value,
