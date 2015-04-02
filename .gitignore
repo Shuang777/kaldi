@@ -133,6 +133,9 @@
 /src/bin/tree-info
 /src/bin/vector-scale
 /src/bin/vector-sum
+/src/bin/matrix-div-cols-sum
+/src/bin/matrix-entropy-rows
+
 
 # /src/cudamatrix/
 /src/cudamatrix/.depend.mk

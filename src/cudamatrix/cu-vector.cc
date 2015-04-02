@@ -317,7 +317,7 @@ Real CuVectorBase<Real>::ComputeEntropy() const {
 
 template<typename Real>
 void CuVectorBase<Real>::ComputeEntropyPerRow(const CuMatrixBase<Real> &mat) {
-  KALDI_ASSERT(this->dim_ == mat.NumCols());
+  KALDI_ASSERT(this->dim_ == mat.NumRows());
 #if HAVE_CUDA == 1 
   if (CuDevice::Instantiate().Enabled()) {
     Timer tim;

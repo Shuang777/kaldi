@@ -440,6 +440,9 @@ class MatrixBase {
   /// Set each element to the tanh of the corresponding element of "src".
   void Tanh(const MatrixBase<Real> &src);
 
+  /// Divide each element by the sum of the column
+  void DivColSum();
+
   // Function used in backpropagating derivatives of the sigmoid function:
   // element-by-element, set *this = diff * value * (1.0 - value).
   void DiffSigmoid(const MatrixBase<Real> &value,

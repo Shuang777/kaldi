@@ -253,6 +253,9 @@ class CuMatrixBase {
   /// for each row, the max value is first subtracted for good numerical stability
   void ApplySoftMaxPerRow(const CuMatrixBase<Real> &src);
 
+  /// Divide each element by the column sum
+  void DivColSum();
+
   /// Find the id of the maximal element for each row
   void FindRowMaxId(CuArray<int32> *id) const;
   

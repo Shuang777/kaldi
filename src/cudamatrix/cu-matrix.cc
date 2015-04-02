@@ -1170,6 +1170,25 @@ void CuMatrixBase<Real>::ApplySoftMaxPerRow(const CuMatrixBase<Real> &src) {
   }
 }
 
+template<typename Real>
+void CuMatrixBase<Real>::DivColSum() {
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    Timer tim;
+
+    size_t dimBlock = num_cols_ > CU1DBLOCK ? CU1DBLOCK : num_cols_;
+    size_t dimGrid = (num_cols_ - 1) / dimBlock + 1;
+
+    cuda_div_cols_sum(dimGrid, dimBlock, data_, Dim());
+    CU_SAFE_CALL(cudaGetLastError());
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+  #endif
+  {
+    Mat().DivColSum();
+  }
+}
 
 
 // DiffSigmoid(Ein, Y, Eout) -> Eout.DiffSigmoid(Y, Ein).

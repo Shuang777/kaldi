@@ -84,7 +84,16 @@ class InverseEntropy : public Component {
     int32 num_samples = in[0].back().NumRows();
     inverse_entropy_.Resize(in.size(), num_samples, kSetZero);
     for (int32 i=0; i<in.size(); i++) {
-      inverse_entropy_.Row(i).ComputeEntropyPerRow(in[0].back());
+      inverse_entropy_.Row(i).ComputeEntropyPerRow(in[i].back());
+    }
+    inverse_entropy_.InvertElements();
+    inverse_entropy_.DivColSum();
+    
+    buffer.Resize(num_samples, output_dim_);
+    for (int32 i=0; i<in.size(); i++) {
+      buffer.CopyFromMat(in[i].back());
+      buffer.MulRowsVec(inverse_entropy_.Row(i));
+      out->AddMat(1.0,buffer);
     }
   }
 
@@ -103,6 +112,7 @@ class InverseEntropy : public Component {
   }
  private:
   CuMatrix<BaseFloat> inverse_entropy_;   // each row records the row-entropy for one feature input (note that NumCol of inverse_entropy_ == NumRow of in[0].back())
+  CuMatrix<BaseFloat> buffer;
 };
 
 } // namespace nnet1

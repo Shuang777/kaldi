@@ -2416,6 +2416,21 @@ void MatrixBase<Real>::Tanh(const MatrixBase<Real> &src) {
 }
 
 template<typename Real>
+void MatrixBase<Real>::DivColSum() {
+  Real *data = data_;
+  MatrixIndexT stride = stride_;
+  for(MatrixIndexT c = 0; c < num_cols_; c++) {
+    Real sum = 0;
+    for(MatrixIndexT r = 0; r < num_rows_; r++) {
+      sum += data[c + stride*r];
+    }
+    for(MatrixIndexT r = 0; r < num_rows_; r++) {
+      data[c + stride*r] /= sum;
+    }
+  }
+}
+
+template<typename Real>
 void MatrixBase<Real>::SoftHinge(const MatrixBase<Real> &src) {
   KALDI_ASSERT(SameDim(*this, src));
   int32 num_rows = num_rows_, num_cols = num_cols_;

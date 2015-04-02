@@ -505,6 +505,21 @@ static void _div_rows_vec(Real* mat, const Real* vec_div, MatrixDim d) {
     mat[index] *= inv[threadIdx.y];
 }
 
+template<typename Real>
+__global__
+static void _div_cols_sum(Real* mat, MatrixDim d) {
+  int32_cuda i = threadIdx.x + blockIdx.x * blockDim.x;
+  if (i >= d.cols ) return;
+
+  //invert divider in shared memory
+  Real sum = 0;
+  for (int32_cuda j = 0; j < d.rows; j++) {
+    sum += mat[j*d.stride + i];
+  }
+  for (int32_cuda j = 0; j < d.rows; j++) {
+    mat[j*d.stride + i] /= sum;
+  }
+}
 
 template<typename Real>
 __global__
@@ -1994,6 +2009,10 @@ void cudaF_div_rows_vec(dim3 Gr, dim3 Bl, float* mat, const float* vec_div, Matr
   _div_rows_vec<<<Gr,Bl>>>(mat, vec_div, d);
 }
 
+void cudaF_div_cols_sum(int Gr, int Bl, float* mat, MatrixDim d) {
+  _div_cols_sum<<<Gr,Bl>>>(mat, d);
+}
+
 void cudaF_add_mat(dim3 Gr, dim3 Bl, float alpha, const float* src, float* dst, MatrixDim d, int src_stride, int A_trans) {
   if (A_trans) {
     _add_mat_trans<<<Gr,Bl>>>(alpha,src,dst,d,src_stride);  
@@ -2394,6 +2413,10 @@ void cudaD_calc_pnorm_deriv(dim3 Gr, dim3 Bl, double*y, const double* x1,
 
 void cudaD_div_rows_vec(dim3 Gr, dim3 Bl, double* mat, const double* vec_div, MatrixDim d) {
   _div_rows_vec<<<Gr,Bl>>>(mat, vec_div, d);
+}
+
+void cudaD_div_cols_sum(int Gr, int Bl, double* mat, MatrixDim d) {
+  _div_cols_sum<<<Gr,Bl>>>(mat, d);
 }
 
 void cudaD_add_mat(dim3 Gr, dim3 Bl, double alpha, const double* src, double* dst, MatrixDim d, int src_stride, int A_trans) {

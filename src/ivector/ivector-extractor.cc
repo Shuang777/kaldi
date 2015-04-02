@@ -167,8 +167,10 @@ double IvectorExtractor::GetResidue(
   Vector<double> estimates(FeatDim());
   Vector<double> residue_buffer(FeatDim());
 
+  (*mean)(0) -= prior_offset_;
   double norm = mean->Norm(2.0);
   residue += lambda * norm * norm;
+  (*mean)(0) += prior_offset_;
 
   for (int32 i = 0; i < I; i++) {
     double gamma = utt_stats.gamma_(i);
