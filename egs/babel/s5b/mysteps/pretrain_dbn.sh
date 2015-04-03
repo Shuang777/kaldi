@@ -26,7 +26,6 @@
 # 
 {
 set -e
-set -x
 
 # Begin configuration.
 #

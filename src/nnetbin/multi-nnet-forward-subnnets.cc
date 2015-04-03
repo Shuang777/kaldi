@@ -113,10 +113,6 @@ int main(int argc, char *argv[]) {
     if (apply_log && no_softmax) {
       KALDI_ERR << "Nonsense option combination : --apply-log=true and --no-softmax=true";
     }
-    if (apply_log && multi_nnet.GetLastComponent().GetType() != kaldi::nnet1::Component::kSoftmax) {
-      KALDI_ERR << "Used --apply-log=true, but nnet " << model_filename 
-                << " does not have <softmax> as last component!";
-    }
     
     PdfPrior pdf_prior(prior_opts);
     if (prior_opts.class_frame_counts != "" && (!no_softmax && !apply_log)) {
