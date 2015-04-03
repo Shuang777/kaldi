@@ -259,6 +259,16 @@ int main(int argc, char *argv[]) {
               << " in " << time.Elapsed()/60 << "min," 
               << " (fps " << tot_t/time.Elapsed() << ")"; 
 
+    for (int32 i=0; i<num_features; i++) {
+      delete feats_transfs[i];
+    }
+    for (int32 i=0; i<multi_nnet.NumOutputObjs(); i++) {
+      delete obj_diff[i];
+    }
+    for (int32 i=0; i<num_features; i++) {
+      delete nnet_backout[i];
+    }
+
 #if HAVE_CUDA==1
     if (kaldi::g_kaldi_verbose_level >= 1) {
       CuDevice::Instantiate().PrintProfile();

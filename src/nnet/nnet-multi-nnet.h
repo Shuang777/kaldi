@@ -115,6 +115,10 @@ class MultiNnet {
   void Split(int32 c);
   /// Split shared nnet at the front and assign to in_sub_nnets
   void SplitFront(int32 c);
+  /// Push shared nnet to in subnnet
+  void PushToInSubNnet();
+  /// Add a merge layer for in subnnets
+  void AddMergeLayer(std::string merge_layer_type);
  
   /// Access to forward pass buffers
   const std::vector<CuMatrix<BaseFloat> >& SharedPropagateBuffer() const { 

@@ -39,6 +39,9 @@ int main(int argc, char *argv[]) {
     
     ParseOptions po(usage);
     po.Register("binary", &binary_write, "Write output in binary mode");
+    
+    bool add_to_front = false;
+    po.Register("add-to-front", &add_to_front, "Add subnnet to front or end (defalut is false, i.e. add to end)");
 
     po.Read(argc, argv);
 
@@ -65,7 +68,11 @@ int main(int argc, char *argv[]) {
       nnet.Read(ki.Stream(), binary_read);
     }
     
-    multi_nnet.AddSubNnet(nnet);
+    if (add_to_front) {
+      multi_nnet.AddInSubNnet(nnet);
+    } else {
+      multi_nnet.AddSubNnet(nnet);
+    }
     {
       Output ko(multi_nnet_out_filename, binary_write);
       multi_nnet.Write(ko.Stream(), binary_write);

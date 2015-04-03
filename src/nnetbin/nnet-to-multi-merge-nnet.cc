@@ -1,4 +1,4 @@
-// nnetbin/multi-nnet-add-subnnet.cc
+// nnetbin/nnet-to-multi-nnet.cc
 
 // Copyright 2015  International Computer Science Institute (Author: Hang Su)
 
@@ -29,10 +29,10 @@ int main(int argc, char *argv[]) {
     typedef kaldi::int32 int32;
 
     const char *usage =
-        "Add Nnet to MultiNnet (as sub Nnet)\n"
-        "Usage:  multi-nnet-add-subnnet [options] <multi-nnet-in> <nnet-in> <multi-nnet-out>\n"
+        "Convert Nnet to MultiNnet (only shared layers)\n"
+        "Usage:  nnet-to-multi-merge-nnet [options] <nnet-in-subnnet-1> <...> <nnet-subnnet-N> <merge-layer> <multi-nnet-out>\n"
         "e.g.:\n"
-        " multi-nnet-add-subnnet --binary=false multi_nnet.mdl nnet.mdl multi_nnet_new.mdl\n";
+        " nnet-to-multi-merge-nnet --binary=false nnet1.mdl nnet2.mdl InverseEntropy multi_nnet.mdl\n";
 
 
     bool binary_write = true;
@@ -42,36 +42,40 @@ int main(int argc, char *argv[]) {
 
     po.Read(argc, argv);
 
-    if (po.NumArgs() != 3) {
+    if (po.NumArgs() < 2) {
       po.PrintUsage();
       exit(1);
     }
 
-    std::string multi_nnet_in_filename = po.GetArg(1);
-    std::string nnet_in_filename = po.GetArg(2);
-    std::string multi_nnet_out_filename = po.GetArg(3);
+    std::string model_in_filename = po.GetArg(1);
 
-    MultiNnet multi_nnet;
+    MultiNnet multi_nnet; 
     {
       bool binary_read;
-      Input ki(multi_nnet_in_filename, &binary_read);
-      multi_nnet.Read(ki.Stream(), binary_read);
+      Input ki(model_in_filename, &binary_read);
+      multi_nnet.ReadSharedNnet(ki.Stream(), binary_read);
     }
-    
-    Nnet nnet;
-    {
+    multi_nnet.PushToInSubNnet();
+
+    for (int32 i=2; i<po.NumArgs()-1; i++) {
+      std::string nnet_subnnet_filename = po.GetArg(i);
+      Nnet nnet;
       bool binary_read;
-      Input ki(nnet_in_filename, &binary_read);
+      Input ki(nnet_subnnet_filename, &binary_read);
       nnet.Read(ki.Stream(), binary_read);
+      multi_nnet.AddInSubNnet(nnet);
     }
+
+    std::string merge_layer = po.GetArg(po.NumArgs()-1);
+    multi_nnet.AddMergeLayer(merge_layer);
     
-    multi_nnet.AddInSubNnet(nnet);
+    std::string model_out_filename = po.GetArg(po.NumArgs());
     {
-      Output ko(multi_nnet_out_filename, binary_write);
+      Output ko(model_out_filename, binary_write);
       multi_nnet.Write(ko.Stream(), binary_write);
     }
 
-    KALDI_LOG << "Written model to " << multi_nnet_out_filename;
+    KALDI_LOG << "Written model to " << model_out_filename;
     return 0;
   } catch(const std::exception& e) {
     std::cerr << e.what() << '\n';

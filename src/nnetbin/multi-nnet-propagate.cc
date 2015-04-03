@@ -137,8 +137,6 @@ int main(int argc, char *argv[]) {
     std::vector<const CuMatrixBase<BaseFloat> *> nnet_ins(num_features);
     std::vector<CuMatrix<BaseFloat> *> nnet_out;
     std::vector<CuMatrixBase<BaseFloat> *> nnet_out_base;
-    std::vector<CuMatrix<BaseFloat> *> obj_diff;
-    std::vector<Matrix<BaseFloat> > obj_diff_host;
     Matrix<BaseFloat> nnet_out_host;
 
     Timer time;
@@ -239,6 +237,10 @@ int main(int argc, char *argv[]) {
               << " in " << time.Elapsed()/60 << "min," 
               << " (fps " << tot_t/time.Elapsed() << ")"; 
 
+
+    for (int32 i=0; i<num_features; i++) {
+      delete feats_transfs[i];
+    }
 #if HAVE_CUDA==1
     if (kaldi::g_kaldi_verbose_level >= 1) {
       CuDevice::Instantiate().PrintProfile();

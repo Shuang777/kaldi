@@ -486,7 +486,6 @@
 /src/nnetbin/transf-to-nnet
 /src/nnetbin/paste-post
 /src/nnetbin/multi-nnet-add-subnnet
-/src/nnetbin/multi-nnet-add-subnnet-front
 /src/nnetbin/multi-nnet-copy
 /src/nnetbin/multi-nnet-forward
 /src/nnetbin/multi-nnet-info
@@ -499,6 +498,7 @@
 /src/nnetbin/multi-nnet-propagateback
 /src/nnetbin/multi-nnet-train-frmshuff-subnnets
 /src/nnetbin/multi-nnet-forward-subnnets
+/src/nnetbin/nnet-to-multi-merge-nnet
 
 # /src/nnet2/
 /src/nnet2/.depend.mk

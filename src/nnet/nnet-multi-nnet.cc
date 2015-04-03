@@ -17,6 +17,7 @@
 // See the Apache 2 License for the specific language governing permissions and
 // limitations under the License.
 
+#include <sstream>
 #include "nnet/nnet-multi-nnet.h"
 #include "nnet/nnet-component.h"
 //#include "nnet/nnet-parallel-component.h"
@@ -607,8 +608,6 @@ void MultiNnet::AddInSubNnet(const Nnet& nnet_to_add) {
   std::vector<CuMatrix<BaseFloat> > in_sub_nnet_backpropagate_buf_;
   in_sub_nnet_backpropagate_buf_.resize(in_sub_nnet_components_.size()+1);
   in_sub_nnets_backpropagate_buf_.push_back(in_sub_nnet_backpropagate_buf_);
-  
-  Check();
 }
 
 void MultiNnet::AddSubNnet(const Nnet& nnet_to_add) {
@@ -683,6 +682,31 @@ void MultiNnet::SplitFront(int32 c) {
     in_sub_nnets_backpropagate_buf_[i].resize(in_sub_nnets_components_[i].size()+1);
   }
   Check();
+}
+
+void MultiNnet::PushToInSubNnet() {
+  KALDI_ASSERT(NumInSubNnets() == 0);
+  in_sub_nnets_components_.push_back(shared_components_);
+  shared_components_.resize(0);
+  shared_propagate_buf_.resize(1);
+  shared_backpropagate_buf_.resize(1);
+
+  in_sub_nnets_propagate_buf_.resize(in_sub_nnets_components_.size());
+  in_sub_nnets_backpropagate_buf_.resize(in_sub_nnets_components_.size());
+  for (int32 i=0; i<in_sub_nnets_components_.size(); i++){
+    in_sub_nnets_propagate_buf_[i].resize(in_sub_nnets_components_[i].size()+1);
+    in_sub_nnets_backpropagate_buf_[i].resize(in_sub_nnets_components_[i].size()+1);
+  }
+  Check();
+}
+
+void MultiNnet::AddMergeLayer(std::string merge_layer_type) {
+  KALDI_ASSERT(NumInSubNnets() > 0);
+  int32 merge_output_dim = in_sub_nnets_components_[0].back()->OutputDim();
+  int32 merge_input_dim = merge_output_dim * NumInSubNnets();
+  std::stringstream ss;
+  ss << "<" << merge_layer_type << "> " << "<InputDim> " << merge_input_dim << " <OutputDim> " << merge_output_dim;
+  merge_component_ = Component::Init(ss.str()+"\n");
 }
 
 void MultiNnet::SetDropoutRetention(BaseFloat r)  {
@@ -1191,7 +1215,7 @@ void MultiNnet::Check() const {
   for(int32 i=0; i<NumSubNnets(); i++) {
     KALDI_ASSERT(sub_nnets_backpropagate_buf_[i].size() == NumSubNnetComponents()+1);
   }
-  KALDI_ASSERT((NumInSubNnets() == 0) == (merge_component_ == NULL));    // if there is in_sub_nnet, we need a merge component.
+  KALDI_ASSERT((NumInSubNnets() <= 1) == (merge_component_ == NULL));    // if there is in_sub_nnet, we need a merge component.
 
   // check dims,
   int32 sum_in_sub_nnets_output_dim = 0;
@@ -1210,7 +1234,7 @@ void MultiNnet::Check() const {
     }
     sum_in_sub_nnets_output_dim += in_sub_nnets_components_[i].back()->OutputDim();
   }
-  if (NumInSubNnets() > 0) {
+  if (merge_component_ != NULL) {
     int32 input_dim = merge_component_->InputDim();
     KALDI_ASSERT(input_dim == sum_in_sub_nnets_output_dim);
 
