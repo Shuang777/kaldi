@@ -119,6 +119,8 @@ class MultiNnet {
   void PushToInSubNnet();
   /// Add a merge layer for in subnnets
   void AddMergeLayer(std::string merge_layer_type);
+  /// Add a softmax layer for shared layers
+  void AddSharedSoftmax();
  
   /// Access to forward pass buffers
   const std::vector<CuMatrix<BaseFloat> >& SharedPropagateBuffer() const { 

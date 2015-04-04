@@ -41,9 +41,9 @@ int main(int argc, char *argv[]) {
     const char *usage =
         "Perform one iteration of Neural Network training by mini-batch Stochastic Gradient Descent.\n"
         "This version use pdf-posterior as targets, prepared typically by ali-to-post.\n"
-        "Usage:  multi-nnet-train-frmshuff [options] <feature-rspecifier-1> <feature-rspecifier-2> ... <targets-rspecifier> <subnnet-ids-rspecifier> <model-in> [<model-out>]\n"
+        "Usage:  multi-nnet-train-frmshuff-subnnets [options] <feature-rspecifier-list> <targets-rspecifier> <model-in> [<model-out>]\n"
         "e.g.: \n"
-        " multi-nnet-train-frmshuff scp:feature1.scp scp:feature2.scp ... ark:posterior.ark multi_nnet.init multi_nnet.iter1\n";
+        " multi-nnet-train-frmshuff-subnnets feature.list ark:posterior.ark multi_nnet.init multi_nnet.iter1\n";
 
     ParseOptions po(usage);
 
@@ -59,8 +59,9 @@ int main(int argc, char *argv[]) {
     po.Register("cross-validate", &crossvalidate, "Perform cross-validation (don't backpropagate)");
     po.Register("randomize", &randomize, "Perform the frame-level shuffling within the Cache::");
 
-    std::string feature_transform;
-    po.Register("feature-transform", &feature_transform, "Feature transform in Nnet format");
+    std::string feature_transform_list;
+    po.Register("feature-transform-list", &feature_transform_list, "Feature transform in front of main network (in nnet format)");
+    
     std::string objective_function = "xent";
     po.Register("objective-function", &objective_function, "Objective function : xent|mse");
 
@@ -87,22 +88,30 @@ int main(int argc, char *argv[]) {
     
     po.Read(argc, argv);
 
-    if (po.NumArgs() < 5-(crossvalidate?1:0)) {
+    if (po.NumArgs() != 4-(crossvalidate?1:0)) {
       po.PrintUsage();
       exit(1);
     }
 
+    std::string feature_list = po.GetArg(1),
+      targets_rspecifier = po.GetArg(2),
+      model_filename = po.GetArg(3);
+        
     std::vector<std::string> feature_rspecifiers;
-    for (int i=1; i<po.NumArgs()-(crossvalidate?0:1)-1; i++) {
-      feature_rspecifiers.push_back(po.GetArg(i));
+    {
+      bool featlist_binary = false;
+      Input ki(feature_list, &featlist_binary);
+      std::istream &is = ki.Stream();
+      string feature_rspecifier;
+      while (getline(is, feature_rspecifier)) {
+        feature_rspecifiers.push_back(feature_rspecifier);
+      }
     }
     const int32 num_features = feature_rspecifiers.size();
-    std::string targets_rspecifier = po.GetArg(po.NumArgs()-(crossvalidate?0:1)-1),
-      model_filename = po.GetArg(po.NumArgs()-(crossvalidate?0:1));
-        
+
     std::string target_model_filename;
     if (!crossvalidate) {
-      target_model_filename = po.GetArg(po.NumArgs());
+      target_model_filename = po.GetArg(4);
     }
 
     using namespace kaldi;
@@ -115,16 +124,15 @@ int main(int argc, char *argv[]) {
     CuDevice::Instantiate().DisableCaching();
 #endif
     std::vector<Nnet> nnet_transfs(feature_rspecifiers.size());
-    if (feature_transform != "") {
-      if (num_features == 1) {
-        nnet_transfs[0].Read(feature_transform);
-      } else {
-        for (int32 i=0; i<num_features; i++) {
-          char intStr[5];
-          sprintf (intStr, "%d", i);
-          string str = string(intStr);
-          nnet_transfs[i].Read(feature_transform+"."+str);
-        }
+    if (feature_transform_list != "") {
+      bool transform_list_binary = false;
+      Input ki(feature_transform_list, &transform_list_binary);
+      std::istream &is = ki.Stream();
+      string feature_transform;
+      int32 i = 0;
+      while (getline(is, feature_transform)) {
+        nnet_transfs[i].Read(feature_transform);
+        i++;
       }
     }
 

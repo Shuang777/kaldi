@@ -21,6 +21,7 @@ minibatch_size=256
 randomizer_size=32768
 randomizer_seed=777
 feature_transform=
+feature_transform_list=
 # learn rate scheduling
 max_iters=20
 min_iters=
@@ -83,6 +84,7 @@ mlp_base=${mlp_init##*/}; mlp_base=${mlp_base%.*}
 $train_tool --cross-validate=true \
  --minibatch-size=$minibatch_size --randomizer-size=$randomizer_size --verbose=$verbose \
  ${feature_transform:+ --feature-transform=$feature_transform} \
+ ${feature_transform_list:+ --feature-transform-list=$feature_transform_list} \
  "$feats_cv" "$labels_cv" $subnnet_ids_arg $mlp_best \
  2> $dir/log/iter00.initial.log || exit 1;
 
@@ -109,6 +111,7 @@ for iter in $(seq -w $max_iters); do
    --updatable-layers=$updatable_layers \
    --binary=true --semi-layers=$semi_layers $frame_weights_opt \
    ${feature_transform:+ --feature-transform=$feature_transform} \
+   ${feature_transform_list:+ --feature-transform-list=$feature_transform_list} \
    ${randomizer_seed:+ --randomizer-seed=$randomizer_seed} \
    "$feats_tr" "$labels_tr" $subnnet_ids_arg $mlp_best $mlp_next \
    2> $dir/log/iter${iter}.tr.log || exit 1; 
@@ -120,6 +123,7 @@ for iter in $(seq -w $max_iters); do
   $train_tool --cross-validate=true \
    --minibatch-size=$minibatch_size --randomizer-size=$randomizer_size --verbose=$verbose \
    ${feature_transform:+ --feature-transform=$feature_transform} \
+   ${feature_transform_list:+ --feature-transform-list=$feature_transform_list} \
    "$feats_cv" "$labels_cv" $subnnet_ids_arg $mlp_next \
    2>$dir/log/iter${iter}.cv.log || exit 1;
   

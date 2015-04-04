@@ -64,7 +64,9 @@ if [ ! -f data/$objdata/.done ]; then
   cp -rfT data/${type} data/${objdata}
   if [[ "$type" != "train" ]]; then
     if [ $segmode == "pem" ]; then
-      [ ! -f $segfile ] && die "no segmentation file $segfile provided"
+      if [ -z "$segfile"] || [ ! -f $segfile ]; then
+        die "no segmentation file $segfile provided"
+      fi
       echo "$segmode mode: preparing segments using $segfile"
       mylocal/kaldiseg_posprocess.sh --filelist $datalist $segfile $datadir data/$objdata
     elif [ $segmode == "unseg" ]; then

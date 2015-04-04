@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
     const char *usage =
         "Perform forward pass through Multi Neural Network.\n"
         "\n"
-        "Usage:  multi-nnet-forward [options] <model-in> <feature-rspecifier-list> <feature-wspecifier>\n"
+        "Usage:  multi-nnet-forward-subnnets [options] <model-in> <feature-rspecifier-list> <feature-wspecifier>\n"
         "e.g.: \n"
         " multi-nnet-forward --subnnet-id=0 multi_nnet feats.list ark:mlpoutput.ark\n";
 
@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
     prior_opts.Register(&po);
 
     std::string feature_transform_list;
-    po.Register("feature-transform_list", &feature_transform_list, "Feature transform in front of main network (in nnet format)");
+    po.Register("feature-transform-list", &feature_transform_list, "Feature transform in front of main network (in nnet format)");
 
     bool no_softmax = false;
     po.Register("no-softmax", &no_softmax, "No softmax on MLP output (or remove it if found), the pre-softmax activations will be used as log-likelihoods, log-priors will be subtracted");
@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
     //optionally remove softmax
     if (no_softmax && multi_nnet.GetLastComponent().GetType() == kaldi::nnet1::Component::kSoftmax) {
       KALDI_LOG << "Removing softmax from the nnet " << model_filename;
-      multi_nnet.RemoveSubNnetComponent(multi_nnet.NumSubNnetComponents()-1);
+      multi_nnet.RemoveLastSoftmax();
     }
     //check for some non-sense option combinations
     if (apply_log && no_softmax) {

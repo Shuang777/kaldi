@@ -276,7 +276,7 @@ void MultiNnet::Backpropagate(const std::vector<CuMatrix<BaseFloat> *> &out_diff
   }
 
   if (in_diff.size() != 0) {
-    for (int32 i=0; i<NumInSubNnetComponents(); i++){
+    for (int32 i=0; i<NumInSubNnets(); i++){
       if (NULL != in_diff[i]) {
         (*in_diff[i]) = in_sub_nnets_backpropagate_buf_[i][0];
       }
@@ -709,6 +709,23 @@ void MultiNnet::AddMergeLayer(std::string merge_layer_type) {
   merge_component_ = Component::Init(ss.str()+"\n");
 }
 
+void MultiNnet::AddSharedSoftmax() {
+  KALDI_ASSERT(NumSharedComponents() > 0 || merge_component_ != NULL);
+  int32 dim;
+  if (NumSharedComponents() == 0) {
+    dim = merge_component_->OutputDim();
+  } else {
+    dim = shared_components_.back()->OutputDim();
+  }
+  std::stringstream ss;
+  ss << "<Softmax> <InputDim> " << dim << " <OutputDim> " << dim;
+  shared_components_.push_back(Component::Init(ss.str()+"\n"));
+  shared_propagate_buf_.resize(shared_components_.size()+1);
+  shared_backpropagate_buf_.resize(shared_components_.size()+1);
+
+  Check();
+}
+
 void MultiNnet::SetDropoutRetention(BaseFloat r)  {
   for (int32 i=0; i<NumInSubNnets(); i++) {
     for (int32 c=0; c<NumInSubNnetComponents(); c++) {
@@ -1083,6 +1100,12 @@ std::string MultiNnet::Info() const {
            << ", output-dim " << in_sub_nnets_components_[i][j]->OutputDim()
            << ", " << in_sub_nnets_components_[i][j]->Info() << std::endl;
     }
+  }
+  if (merge_component_ != NULL) {
+    ostr << "merge component " << merge_component_->GetType() 
+         << ", input-dim " << merge_component_->InputDim()
+         << ", output-dim " << merge_component_->OutputDim()
+         << ", " << merge_component_->Info() << std::endl;
   }
   for (int32 i=0; i<NumSharedComponents(); i++) {
     ostr << "shared component " << i+1 << " : " 

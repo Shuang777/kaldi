@@ -20,7 +20,7 @@ BINFILES = nnet-train-frmshuff \
 				multi-nnet-train-frmshuff multi-nnet-split \
 				multi-nnet-propagateback multi-nnet-train-frmshuff-subnnets \
 				multi-nnet-forward-subnnets multi-nnet-propagate \
-				nnet-to-multi-merge-nnet
+				nnet-to-multi-merge-nnet multi-nnet-add-softmax
 
 
 OBJFILES =

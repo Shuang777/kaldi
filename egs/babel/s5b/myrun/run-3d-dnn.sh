@@ -16,6 +16,7 @@ feattype=plp
 cmd=./cmd.sh
 semi=false
 nnetfeattype=lda
+flatstart=true
 # End configuration
 
 . ./path.sh
@@ -34,17 +35,21 @@ traindata=train_$feattype
 dbndir=exp/${traindata}_tri8_dbn
 [ $semi == true ] && dbndir=${dbndir}_semi
 [ $nnetfeattype == lda ] || dbndir=${dbndir}_$nnetfeattype
+[ $flatstart == true ] || dbndir=${dbndir}_plpalign
 if [ $stage -le 0 ]; then
 if [ ! -f $dbndir/.done ]; then
   echo "-----------------------------------------------------------------"
   echo "Begin pretraining dbn in $dbndir on" `date`
   echo "-----------------------------------------------------------------"
-  if [ $semi == false ]; then
+  if [ $semi == true ]; then
     $cuda_cmd $dbndir/pretrain_dbn.log \
-    mysteps/pretrain_dbn.sh --feat-type $nnetfeattype --transdir exp/${traindata}_tri5_ali data/${traindata} $dbndir
+      mysteps/pretrain_dbn.sh --feat-type $nnetfeattype --transdir exp/${traindata}_tri5_ali --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5/decode_unsup_pem_${feattype} data/${traindata} $dbndir
+  elif [ $flatstart == true ]; then
+    $cuda_cmd $dbndir/pretrain_dbn.log \
+      mysteps/pretrain_dbn.sh --feat-type $nnetfeattype --transdir exp/${traindata}_tri5_ali data/${traindata} $dbndir
   else
     $cuda_cmd $dbndir/pretrain_dbn.log \
-    mysteps/pretrain_dbn.sh --feat-type $nnetfeattype --transdir exp/${traindata}_tri5_ali --semidata data/unsup_pem_${feattype} --semitransdir exp/${traindata}_tri5/decode_unsup_pem_${feattype} data/${traindata} $dbndir
+      mysteps/pretrain_dbn.sh --feat-type $nnetfeattype --transdir exp/${traindata}_tri5_plpalign_ali data/${traindata} $dbndir
   fi
   touch $dbndir/.done
 fi
@@ -53,21 +58,29 @@ fi
 dnndir=exp/${traindata}_tri8_dnn
 [ $semi == true ] && dnndir=${dnndir}_semi
 [ $nnetfeattype == lda ] || dnndir=${dnndir}_$nnetfeattype
+[ $flatstart == true ] || dnndir=${dnndir}_plpalign
 if [ $stage -le 1 ]; then
 if [ ! -f $dnndir/.done ]; then
   echo "-----------------------------------------------------------------"
   echo "Begin training dnn in $dnndir on" `date`
   echo "-----------------------------------------------------------------"
-  if [ $semi == false ]; then
-    $cuda_cmd $dnndir/train_nnet.log \
-    mysteps/train_nnet.sh --feat-type $nnetfeattype --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 data/${traindata} exp/${traindata}_tri5_ali $dnndir
-  else
+  if [ $semi == true ]; then
     $cuda_cmd $dnndir/train_nnet.log \
     mysteps/train_nnet.sh --feat-type $nnetfeattype --feature-transform $dbndir/final.feature_transform --dbn $dbndir/6.dbn \
       --hid-layers 0 --learn-rate 0.008 --cv-subset-factor 0.1 --semidata data/unsup_pem_${feattype} \
       --semitransdir exp/${traindata}_tri5/decode_unsup_pem_${feattype} \
       --semialidir exp/${traindata}_tri6_nnet/decode_unsup_pem_${feattype} \
       data/${traindata} exp/${traindata}_tri5_ali $dnndir
+  elif [ $flatstart == true ]; then
+    $cuda_cmd $dnndir/train_nnet.log \
+      mysteps/train_nnet.sh --feat-type $nnetfeattype --feature-transform $dbndir/final.feature_transform \
+        --transdir exp/${traindata}_tri5_ali --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 \
+        --cv-subset-factor 0.1 data/${traindata} exp/${traindata}_tri5_ali $dnndir
+  else
+    $cuda_cmd $dnndir/train_nnet.log \
+      mysteps/train_nnet.sh --feat-type $nnetfeattype --feature-transform $dbndir/final.feature_transform \
+        --transdir exp/${traindata}_tri5_plpalign_ali --dbn $dbndir/6.dbn --hid-layers 0 --learn-rate 0.008 \
+        --cv-subset-factor 0.1 data/${traindata} exp/train_plp_pitch_tri5_ali $dnndir
   fi
   touch $dnndir/.done
 fi
