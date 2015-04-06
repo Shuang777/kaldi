@@ -84,6 +84,12 @@ class CuVectorBase {
 
   template<typename OtherReal>
   void CopyToVec(VectorBase<OtherReal> *dst) const;
+
+  void CopyToArray(Real *v) const;
+  
+  void CopyFromArray(const Real *v);
+  
+  void AverageArray(const Real *v);
   
   void CopyRowsFromMat(const CuMatrixBase<Real> &M);
 

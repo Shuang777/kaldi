@@ -141,6 +141,13 @@ class ParallelComponent : public UpdatableComponent {
       num_params_sum += nnet_[i].NumParams();
     return num_params_sum;
   }
+  
+  int32 NumElements() const { 
+    int32 num_elements_sum = 0;
+    for (int32 i=0; i<nnet_.size(); i++) 
+      num_elements_sum += nnet_[i].NumElements();
+    return num_elements_sum;
+  }
 
   void GetParams(Vector<BaseFloat>* wei_copy) const { 
     wei_copy->Resize(NumParams());
@@ -152,6 +159,14 @@ class ParallelComponent : public UpdatableComponent {
       offset += wei_aux.Dim();
     }
     KALDI_ASSERT(offset == NumParams());
+  }
+  
+  void GetElements(BaseFloat* wei_copy) const { 
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
+  void AverageElements(const BaseFloat* v) { 
+    KALDI_ERR << __func__ << "Not implemented!";
   }
     
   std::string Info() const { 

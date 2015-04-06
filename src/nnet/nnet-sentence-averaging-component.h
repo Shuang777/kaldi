@@ -74,7 +74,18 @@ class SentenceAveragingComponent : public UpdatableComponent {
   }
 
   int32 NumParams() const { return nnet_.NumParams(); }
+  
+  int32 NumElements() const { return nnet_.NumElements(); }
   void GetParams(Vector<BaseFloat>* wei_copy) const { wei_copy->Resize(NumParams()); nnet_.GetParams(wei_copy); }
+
+  void GetElements(BaseFloat *v) const {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
+  void AverageElements(const BaseFloat *v) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
   std::string Info() const { return std::string("nested_network {\n") + nnet_.Info() + "}\n"; }
   std::string InfoGradient() const { return std::string("nested_gradient {\n") + nnet_.InfoGradient() + "}\n"; }
 

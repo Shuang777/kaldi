@@ -232,11 +232,23 @@ class Convolutional2DComponent : public UpdatableComponent {
     return filters_.NumRows()*filters_.NumCols() + bias_.Dim(); 
   }
   
+  int32 NumElements() const { 
+    return filters_.NumRows()*filters_.Stride() + bias_.Dim(); 
+  }
+  
   void GetParams(Vector<BaseFloat>* wei_copy) const {
     wei_copy->Resize(NumParams());
     int32 filters_num_elem = filters_.NumRows() * filters_.NumCols();
     wei_copy->Range(0,filters_num_elem).CopyRowsFromMat(Matrix<BaseFloat>(filters_));
     wei_copy->Range(filters_num_elem, bias_.Dim()).CopyFromVec(Vector<BaseFloat>(bias_));
+  }
+
+  void GetElements(BaseFloat *v) const {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
+  void AverageElements(const BaseFloat *v) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
   std::string Info() const {

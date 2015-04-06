@@ -802,6 +802,55 @@ void CuVectorBase<Real>::CopyToVec(VectorBase<OtherReal> *dst) const {
   }
 }
 
+template<typename Real>
+void CuVectorBase<Real>::CopyToArray(Real *v) const {
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    Timer tim;
+    CU_SAFE_CALL(cudaMemcpy(v, data_,
+                            dim_*sizeof(Real), cudaMemcpyDeviceToHost));
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+#endif
+  {
+    memcpy(v, data_, dim_*sizeof(Real));
+  }
+}
+
+template<typename Real>
+void CuVectorBase<Real>::CopyFromArray(const Real *v) {
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    Timer tim;
+    CU_SAFE_CALL(cudaMemcpy(data_, v,
+                            dim_*sizeof(Real), cudaMemcpyHostToDevice));
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+#endif
+  {
+    memcpy(data_, v, dim_*sizeof(Real));
+  }
+}
+
+template<typename Real>
+void CuVectorBase<Real>::AverageArray(const Real *v) {
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) { 
+    Timer tim;
+    int32 dim = this->dim_;
+    Real *data = this->data_;
+    cuda_scal(dim, 0.5, data, 1);
+    cuda_axpy(dim, 0.5, v, 1, data, 1);
+    CU_SAFE_CALL(cudaGetLastError());    
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+#endif
+  {
+    for (int32 i=0; i<dim_; i++) {
+      data_[i] = (data_[i] + v[i]) / 2;
+    }
+  }
+}
 
 template<typename Real>
 void CuVector<Real>::Read(std::istream &is, bool binary) {

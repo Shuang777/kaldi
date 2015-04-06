@@ -166,6 +166,12 @@ class FramePoolingComponent : public UpdatableComponent {
     return sum; 
   }
   
+  int32 NumElements() const { 
+    int32 sum = 0; 
+    for (int32 p=0; p<weight_.size(); p++) sum += weight_[p].Dim(); 
+    return sum; 
+  }
+  
   void GetParams(Vector<BaseFloat>* wei_copy) const {
     wei_copy->Resize(NumParams());
     int32 offset = 0;
@@ -174,6 +180,14 @@ class FramePoolingComponent : public UpdatableComponent {
       offset += weight_[p].Dim(); 
     }
     KALDI_ASSERT(offset == wei_copy->Dim());
+  }
+
+  void GetElements(BaseFloat *v) const {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
+  void AverageElements(const BaseFloat *v) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
   
   std::string Info() const {

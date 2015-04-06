@@ -170,6 +170,10 @@ class CuMatrixBase {
   void CopyRowsFromVec(const CuVectorBase<Real> &v);
 
   void CopyRowsFromVec(const VectorBase<Real> &v);
+
+  void CopyToArray(Real *v) const;
+  
+  void AverageArray(const Real *v);
   
   /// Copy vector into specific column of matrix.
   void CopyColFromVec(const CuVectorBase<Real> &v, const MatrixIndexT col);

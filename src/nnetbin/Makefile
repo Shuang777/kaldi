@@ -4,7 +4,7 @@ EXTRA_CXXFLAGS = -Wno-sign-compare
 include ../kaldi.mk
 
 LDFLAGS += $(CUDA_LDFLAGS)
-LDLIBS += $(CUDA_LDLIBS)
+LDLIBS += $(CUDA_LDLIBS) -I/n/shokuji/da/suhang/local/include -L/n/shokuji/da/suhang/local/lib -lmpi_cxx -lmpi
 
 BINFILES = nnet-train-frmshuff \
         nnet-train-perutt \
@@ -20,7 +20,8 @@ BINFILES = nnet-train-frmshuff \
 				multi-nnet-train-frmshuff multi-nnet-split \
 				multi-nnet-propagateback multi-nnet-train-frmshuff-subnnets \
 				multi-nnet-forward-subnnets multi-nnet-propagate \
-				nnet-to-multi-merge-nnet multi-nnet-add-softmax
+				nnet-to-multi-merge-nnet multi-nnet-add-softmax \
+				nnet-train-frmshuff-mpi
 
 
 OBJFILES =

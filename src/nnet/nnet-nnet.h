@@ -35,7 +35,7 @@ namespace nnet1 {
 
 class Nnet {
  public:
-  Nnet() {}
+  Nnet() : send_buffer_(NULL), receive_buffer_(NULL) {}
   Nnet(const Nnet& other); // Copy constructor.
   Nnet &operator = (const Nnet& other); // Assignment operator.
 
@@ -95,6 +95,8 @@ class Nnet {
 
   /// Get the number of parameters in the network
   int32 NumParams() const;
+  /// Get the number of elements in the network (physically allocated Real numbers)
+  int32 NumElements() const;
   /// Get the network weights in a supervector
   void GetParams(Vector<BaseFloat>* wei_copy) const;
   /// Get the network weights in a supervector
@@ -105,6 +107,16 @@ class Nnet {
   void GetGradient(Vector<BaseFloat>* grad_copy) const;
   /// Set the dropout rate 
   void SetDropoutRetention(BaseFloat r);
+  /// Allocate buffer for MPI
+  void AllocBuffer();
+  /// Prepare for MPI
+  void PrepSendBuffer();
+
+  BaseFloat *GetSendBuffer() { return send_buffer_;}
+  BaseFloat *GetReceiveBuffer() { return receive_buffer_;}
+
+  /// Average model with weights in receive buffer
+  void AverageReceiveBuffer();
 
   /// Initialize MLP from config
   void Init(const std::string &config_file);
@@ -127,6 +139,8 @@ class Nnet {
   std::string InfoBackPropagate() const;
   /// Consistency check.
   void Check() const;
+  /// Check if of same structure
+  void CheckSameStructure(const Nnet &other) const;
   /// Relese the memory
   void Destroy();
 
@@ -144,6 +158,10 @@ class Nnet {
 
   std::vector<CuMatrix<BaseFloat> > propagate_buf_; ///< buffers for forward pass
   std::vector<CuMatrix<BaseFloat> > backpropagate_buf_; ///< buffers for backward pass
+
+  BaseFloat* send_buffer_;    // buffer for MPI communication
+  BaseFloat* receive_buffer_; // buffer for MPI communication
+  CuVector<BaseFloat> cuda_receive_buffer_;
 
   /// Option class with hyper-parameters passed to UpdatableComponent(s)
   NnetTrainOptions opts_;

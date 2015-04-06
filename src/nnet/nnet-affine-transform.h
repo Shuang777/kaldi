@@ -121,12 +121,27 @@ class AffineTransform : public UpdatableComponent {
   }
 
   int32 NumParams() const { return linearity_.NumRows()*linearity_.NumCols() + bias_.Dim(); }
+  int32 NumElements() const { return linearity_.NumRows()*linearity_.Stride() + bias_.Dim(); }
   
   void GetParams(Vector<BaseFloat>* wei_copy) const {
     wei_copy->Resize(NumParams());
     int32 linearity_num_elem = linearity_.NumRows() * linearity_.NumCols(); 
     wei_copy->Range(0,linearity_num_elem).CopyRowsFromMat(Matrix<BaseFloat>(linearity_));
     wei_copy->Range(linearity_num_elem, bias_.Dim()).CopyFromVec(Vector<BaseFloat>(bias_));
+  }
+  
+  void GetElements(BaseFloat* wei_copy) const {
+    int32 offset = 0;
+    linearity_.CopyToArray(&wei_copy[offset]);
+    offset += linearity_.NumRows() * linearity_.Stride();
+    bias_.CopyToArray(&wei_copy[offset]);
+  }
+
+  void AverageElements(const BaseFloat* v) {
+    int32 offset = 0;
+    linearity_.AverageArray(&v[offset]);
+    offset += linearity_.NumRows() * linearity_.Stride();
+    bias_.AverageArray(&v[offset]);
   }
   
   std::string Info() const {

@@ -500,6 +500,7 @@
 /src/nnetbin/multi-nnet-forward-subnnets
 /src/nnetbin/nnet-to-multi-merge-nnet
 /src/nnetbin/multi-nnet-add-softmax
+/src/nnetbin/nnet-train-frmshuff-mpi
 
 # /src/nnet2/
 /src/nnet2/.depend.mk

@@ -167,6 +167,7 @@ bool IsToken(const std::string &token);
 /// characters, and does not contain leading or trailing whitespace.
 bool IsLine(const std::string &line);
 
+bool ReplaceStr(std::string& str, const std::string& from, const std::string& to);
 
 }  // namespace kaldi
 

@@ -465,10 +465,19 @@ class AddShift : public UpdatableComponent {
   }
   
   int32 NumParams() const { return shift_data_.Dim(); }
+  int32 NumElements() const { return shift_data_.Dim(); }
 
   void GetParams(Vector<BaseFloat>* wei_copy) const {
     wei_copy->Resize(InputDim());
     shift_data_.CopyToVec(wei_copy);
+  }
+
+  void GetElements(BaseFloat* wei_copy) const {
+    shift_data_.CopyToArray(wei_copy);
+  }
+
+  void AverageElements(const BaseFloat* v) {
+    shift_data_.AverageArray(v);
   }
    
   std::string Info() const {
@@ -581,10 +590,19 @@ class Rescale : public UpdatableComponent {
   }
 
   int32 NumParams() const { return scale_data_.Dim(); }
+  int32 NumElements() const { return scale_data_.Dim(); }
 
   void GetParams(Vector<BaseFloat>* wei_copy) const {
     wei_copy->Resize(InputDim());
     scale_data_.CopyToVec(wei_copy);
+  }
+
+  void GetElements(BaseFloat* wei_copy) const {
+    scale_data_.CopyToArray(wei_copy);
+  }
+
+  void AverageElements(const BaseFloat* v) {
+    scale_data_.AverageArray(v);
   }
  
   std::string Info() const {

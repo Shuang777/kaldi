@@ -89,11 +89,20 @@ class LinearTransform : public UpdatableComponent {
   }
 
   int32 NumParams() const { return linearity_.NumRows()*linearity_.NumCols(); }
+  int32 NumElements() const { return linearity_.NumRows()*linearity_.Stride(); }
   
   void GetParams(Vector<BaseFloat>* wei_copy) const {
     wei_copy->Resize(NumParams());
     int32 linearity_num_elem = linearity_.NumRows() * linearity_.NumCols(); 
     wei_copy->Range(0,linearity_num_elem).CopyRowsFromMat(Matrix<BaseFloat>(linearity_));
+  }
+
+  void GetElements(BaseFloat *v) const {
+    linearity_.CopyToArray(v); 
+  }
+
+  void AverageElements(const BaseFloat *v) {
+    linearity_.AverageArray(v);
   }
   
   std::string Info() const {

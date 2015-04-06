@@ -1639,6 +1639,45 @@ void CuMatrixBase<Real>::CopyRowsFromVec(const VectorBase<Real> &v) {
   }
 }
 
+template<typename Real>
+void CuMatrixBase<Real>::CopyToArray(Real *v) const {
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    Timer tim;
+    CU_SAFE_CALL(cudaMemcpy(v, data_,
+                            sizeof(Real)*num_rows_*stride_,
+                            cudaMemcpyDeviceToHost));
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+#endif
+  {
+    memcpy ( v, data_, num_rows_*stride_*sizeof(Real) );
+  }
+}
+
+template<typename Real>
+void CuMatrixBase<Real>::AverageArray(const Real *v) {
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    if (num_rows_ == 0) return;
+    Timer tim;
+    dim3 dimBlock(CU2DBLOCK, CU2DBLOCK);
+    dim3 dimGrid(n_blocks(NumCols(), CU2DBLOCK), n_blocks(NumRows(), CU2DBLOCK));
+    cuda_avg_mat(dimGrid, dimBlock, v, data_, Dim()); 
+    CU_SAFE_CALL(cudaGetLastError());
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+
+  } else
+#endif
+  {
+    for (int32 i = 0; i < num_rows_; i++) {
+      for (int32 j = 0; j < stride_; j++) {
+        data_[i*stride_+j] = (data_[i*stride_+j] + v[i*stride_+j]) / 2;
+      }
+    }
+  }
+}
 
 template<typename Real>
 void CuMatrixBase<Real>::CopyColFromVec(const CuVectorBase<Real> &v,

@@ -218,7 +218,10 @@ class UpdatableComponent : public Component {
 
   /// Number of trainable parameters
   virtual int32 NumParams() const = 0;
+  virtual int32 NumElements() const = 0;
   virtual void GetParams(Vector<BaseFloat> *params) const = 0;
+  virtual void GetElements(BaseFloat *params) const = 0;
+  virtual void AverageElements(const BaseFloat *params) = 0;
 
   /// Compute gradient and update parameters
   virtual void Update(const CuMatrixBase<BaseFloat> &input,

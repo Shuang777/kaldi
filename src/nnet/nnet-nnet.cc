@@ -39,6 +39,8 @@ Nnet::Nnet(const Nnet& other) {
   backpropagate_buf_.resize(NumComponents()+1);
   // copy train opts
   SetTrainOptions(other.opts_);
+  send_buffer_ = NULL;
+  receive_buffer_ = NULL;
   Check(); 
 }
 
@@ -53,6 +55,8 @@ Nnet & Nnet::operator = (const Nnet& other) {
   backpropagate_buf_.resize(NumComponents()+1);
   // copy train opts
   SetTrainOptions(other.opts_); 
+  send_buffer_ = NULL;
+  receive_buffer_ = NULL;
   Check();
   return *this;
 }
@@ -397,6 +401,15 @@ int32 Nnet::NumParams() const {
   return n_params;
 }
 
+int32 Nnet::NumElements() const {
+  int32 n_elements = 0;
+  for(int32 n=0; n<components_.size(); n++) {
+    if(components_[n]->IsUpdatable()) {
+      n_elements += dynamic_cast<UpdatableComponent*>(components_[n])->NumElements();
+    }
+  }
+  return n_elements;
+}
 
 void Nnet::SetDropoutRetention(BaseFloat r)  {
   for (int32 c=0; c < NumComponents(); c++) {
@@ -410,6 +423,39 @@ void Nnet::SetDropoutRetention(BaseFloat r)  {
   }
 }
 
+void Nnet::AllocBuffer() {
+  send_buffer_ = new BaseFloat[NumElements()];
+  receive_buffer_ = new BaseFloat[NumElements()];
+  cuda_receive_buffer_.Resize(NumElements());
+}
+
+void Nnet::PrepSendBuffer() {
+  int32 pos = 0;
+  // copy the elements
+  for(int32 i=0; i<components_.size(); i++) {
+    if(components_[i]->IsUpdatable()) {
+      UpdatableComponent& c = dynamic_cast<UpdatableComponent&>(*components_[i]);
+      c.GetElements(&send_buffer_[pos]);
+      pos += c.NumElements();
+    }
+  }
+  KALDI_ASSERT(pos == NumElements());
+}
+
+void Nnet::AverageReceiveBuffer() {
+  cuda_receive_buffer_.CopyFromArray(receive_buffer_);
+  BaseFloat *cuda_receive_buffer_ptr = cuda_receive_buffer_.Data();
+  int32 pos = 0;
+  // copy the elements
+  for(int32 i=0; i<components_.size(); i++) {
+    if(components_[i]->IsUpdatable()) {
+      UpdatableComponent& c = dynamic_cast<UpdatableComponent&>(*components_[i]);
+      c.AverageElements(&cuda_receive_buffer_ptr[pos]);
+      pos += c.NumElements();
+    }
+  }
+  KALDI_ASSERT(pos == NumElements());
+}
 
 void Nnet::Init(const std::string &file) {
   Input in(file);
@@ -574,6 +620,14 @@ void Nnet::Check() const {
   }
 }
 
+void Nnet::CheckSameStructure(const Nnet &other) const {
+  KALDI_ASSERT(NumComponents() == other.NumComponents());
+  for (int32 i=0; i<NumComponents(); i++) {
+    KALDI_ASSERT(GetComponent(i).GetType() == other.GetComponent(i).GetType());
+    KALDI_ASSERT(GetComponent(i).InputDim() == other.GetComponent(i).InputDim());
+    KALDI_ASSERT(GetComponent(i).OutputDim() == other.GetComponent(i).OutputDim());
+  }
+}
 
 void Nnet::Destroy() {
   for(int32 i=0; i<NumComponents(); i++) {
@@ -582,6 +636,12 @@ void Nnet::Destroy() {
   components_.resize(0);
   propagate_buf_.resize(0);
   backpropagate_buf_.resize(0);
+  if (send_buffer_ != NULL) {
+    delete[] send_buffer_;
+  }
+  if (receive_buffer_ != NULL) {
+    delete[] receive_buffer_;
+  }
 }
 
 

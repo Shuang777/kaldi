@@ -534,6 +534,17 @@ static void _add_mat(Real alpha, const Real* src, Real* dst, MatrixDim d, int sr
 
 template<typename Real>
 __global__
+static void _avg_mat(const Real* src, Real* dst, MatrixDim d) {
+  int32_cuda i = blockIdx.x * blockDim.x + threadIdx.x;
+  int32_cuda j = blockIdx.y * blockDim.y + threadIdx.y;
+  int32_cuda index = i + j*d.stride;
+  int32_cuda index_src = i + j*d.stride;
+  if (i < d.cols && j < d.rows)
+    dst[index] = (src[index_src] + dst[index]) / 2;
+}
+
+template<typename Real>
+__global__
 static void _add_mat_trans(Real alpha, const Real* src, Real* dst, MatrixDim d, int src_stride) {
   int32_cuda i = blockIdx.x * blockDim.x + threadIdx.x;
   int32_cuda j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -2021,6 +2032,10 @@ void cudaF_add_mat(dim3 Gr, dim3 Bl, float alpha, const float* src, float* dst, 
   }
 }
 
+void cudaF_avg_mat(dim3 Gr, dim3 Bl, const float* src, float* dst, MatrixDim d) {
+  _avg_mat<<<Gr,Bl>>>(src,dst,d);
+}
+
 void cudaF_add_mat_mat_div_mat(dim3 Gr, dim3 Bl, const float *A, const float *B, const float *C, float *dst, MatrixDim d, int stride_a, int stride_b, int stride_c) {
   _add_mat_mat_div_mat<<<Gr,Bl>>>(A,B,C,dst,d, stride_a, stride_b, stride_c);
 }
@@ -2425,6 +2440,10 @@ void cudaD_add_mat(dim3 Gr, dim3 Bl, double alpha, const double* src, double* ds
   } else {
     _add_mat<<<Gr,Bl>>>(alpha,src,dst,d,src_stride);   
   }
+}
+
+void cudaD_avg_mat(dim3 Gr, dim3 Bl, const double* src, double* dst, MatrixDim d) {
+  _avg_mat<<<Gr,Bl>>>(src,dst,d);   
 }
 
 void cudaD_add_mat_mat_div_mat(dim3 Gr, dim3 Bl, const double *A, const double *B, const double *C, double *dst, MatrixDim d, int stride_a, int stride_b, int stride_c) {
