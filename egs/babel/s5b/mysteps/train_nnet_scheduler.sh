@@ -39,6 +39,8 @@ frame_weights=
 subnnet_ids=
 semi_layers=-1
 updatable_layers=""
+frames_per_avg=
+avg_per_iter_tr=
 
 # End configuration.
 
@@ -69,6 +71,7 @@ dir=$6
 # Skip training
 [ -e $dir/final.nnet ] && echo "'$dir/final.nnet' exists, skipping training" && exit 0
 
+
 ##############################
 #start training
 
@@ -80,6 +83,8 @@ mlp_base=${mlp_init##*/}; mlp_base=${mlp_base%.*}
 [ -e $dir/.learn_rate ] && learn_rate=$(cat $dir/.learn_rate)
 
 [ ! -z "$subnnet_ids" ] && subnnet_ids_arg="ark:$subnnet_ids"     # this is for multi_nnet_training
+[ ! -z "$frames_per_avg" ] && nnet_average_arg="--frames-per-avg=$frames_per_avg"     # this is for nnet mpi training
+
 # cross-validation on original network
 $train_tool --cross-validate=true \
  --minibatch-size=$minibatch_size --randomizer-size=$randomizer_size --verbose=$verbose \
@@ -110,6 +115,8 @@ for iter in $(seq -w $max_iters); do
    --minibatch-size=$minibatch_size --randomizer-size=$randomizer_size --randomize=true --verbose=$verbose \
    --updatable-layers=$updatable_layers \
    --binary=true --semi-layers=$semi_layers $frame_weights_opt \
+   ${avg_per_iter_tr:+ --max-avg-count=$avg_per_iter_tr} \
+   ${frames_per_avg:+ --frames-per-avg=$frames_per_avg} \
    ${feature_transform:+ --feature-transform=$feature_transform} \
    ${feature_transform_list:+ --feature-transform-list=$feature_transform_list} \
    ${randomizer_seed:+ --randomizer-seed=$randomizer_seed} \

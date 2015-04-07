@@ -29,6 +29,15 @@
 using namespace kaldi;
 using namespace kaldi::nnet1;
 
+/// Butterfly mixing
+int get_friend_id(int mpi_rank, int mpi_jobs, int round_i) {
+  int rounds = round(log2(mpi_jobs));
+  return mpi_rank ^ (1 << (round_i % rounds));
+}
+
+bool is_power_of_two(int x) {
+  return ((x != 0) && !(x & (x-1)));
+}
 
 void share_and_average(Nnet &nnet, const int rank_id, const int friend_id) {
   KALDI_ASSERT(rank_id != friend_id);
@@ -106,6 +115,9 @@ int main(int argc, char *argv[]) {
     int32 frames_per_avg = 10000;
     po.Register("frames-per-avg", &frames_per_avg, "Number of frames per average operation on MPI (default = 10000)");
     
+    int32 max_avg_count = INT_MAX;
+    po.Register("max-avg-count", &max_avg_count, "Maximum number of average operation. (default = 10000)");
+    
     double dropout_retention = 0.0;
     po.Register("dropout-retention", &dropout_retention, "number between 0..1, saying how many neurons to preserve (0.0 will keep original value");
      
@@ -124,19 +136,21 @@ int main(int argc, char *argv[]) {
     MPI::Init();
     int32 mpi_rank = MPI::COMM_WORLD.Get_rank();
     int32 mpi_jobs = MPI::COMM_WORLD.Get_size();
-    std::string rank_str;
 
     KALDI_ASSERT(mpi_jobs > 1);
+    KALDI_ASSERT(is_power_of_two(mpi_jobs));
+
+    std::string rank_str;
     {
       std::stringstream ss;
-      ss << mpi_rank;
+      ss << mpi_rank+1;
       rank_str = ss.str();
       ReplaceStr(feature_rspecifier, "MPI_RANK", rank_str);
     }
         
     std::string target_model_filename;
     if (!crossvalidate) {
-      target_model_filename = po.GetArg(4) + rank_str;
+      target_model_filename = po.GetArg(4);
     }
 
     using namespace kaldi;
@@ -163,7 +177,9 @@ int main(int argc, char *argv[]) {
       nnet.SetUpdatables(updatable);
     }
 
-    nnet.AllocBuffer();
+    if (!crossvalidate) {
+      nnet.AllocBuffer();
+    }
     int32 average_count = 0;
 
     Nnet ref_nnet;
@@ -205,7 +221,7 @@ int main(int argc, char *argv[]) {
       KALDI_LOG << (crossvalidate?"CROSS-VALIDATION":"TRAINING") << " STARTED";
 
     int32 num_done = 0, num_no_tgt_mat = 0, num_other_error = 0;
-    while (!feature_reader.Done()) {
+    while (!feature_reader.Done() && average_count < max_avg_count) {
 #if HAVE_CUDA==1
       // check the GPU is not overheated
       CuDevice::Instantiate().CheckGpuHealth();
@@ -288,7 +304,7 @@ int main(int argc, char *argv[]) {
       }
 
       // train with data from randomizers (using mini-batches)
-      for ( ; !feature_randomizer.Done(); feature_randomizer.Next(),
+      for ( ; !feature_randomizer.Done() && average_count < max_avg_count; feature_randomizer.Next(),
                                           targets_randomizer.Next(),
                                           weights_randomizer.Next()) {
         // get block of feature/target pairs
@@ -349,11 +365,11 @@ int main(int argc, char *argv[]) {
           }
         }
 
-        if (total_frames/frames_per_avg != ((total_frames+nnet_in.NumRows())/frames_per_avg)) { // average every frames_per_avg frames
-          int32 friend_id = 1 - mpi_rank;
+        if (!crossvalidate && total_frames/frames_per_avg != ((total_frames+nnet_in.NumRows())/frames_per_avg)) { // average every frames_per_avg frames
+          int32 friend_id = get_friend_id(mpi_rank, mpi_jobs, average_count);
           if (mpi_rank == 0)
-            KALDI_VLOG(2) << "### MPI averaging after " << total_frames << " frames."
-                          << " Count " << average_count << " friend id " << friend_id;
+            KALDI_LOG << "### MPI averaging after " << total_frames+nnet_in.NumRows() << " frames.";
+//          KALDI_LOG << "Rank " << mpi_rank << " friend id " << friend_id;
           share_and_average(nnet, mpi_rank, friend_id);
           average_count++;
         }
@@ -361,6 +377,9 @@ int main(int argc, char *argv[]) {
         total_frames += nnet_in.NumRows();
       }
     }
+
+    while(!feature_reader.Done())
+      feature_reader.Next();
     
     // after last minibatch : show what happens in network 
     if (kaldi::g_kaldi_verbose_level >= 1 && mpi_rank == 0) { // vlog-1
@@ -372,7 +391,7 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    if (!crossvalidate) {
+    if (!crossvalidate && mpi_rank == 0) {    // The nnets are different, but they are largely the same, so we only write out one
       nnet.Write(target_model_filename, binary);
     }
 
@@ -384,12 +403,35 @@ int main(int argc, char *argv[]) {
               << ", " << time.Elapsed()/60 << " min, fps" << total_frames/time.Elapsed()
               << "]";  
 
+    double loss;
+    int32 num_frames;
     if (objective_function == "xent") {
-      KALDI_LOG << "MPI job " << mpi_rank << " " << xent.Report() << std::endl;
+      loss = xent.GetLoss();
+      num_frames = xent.GetFrames();
     } else if (objective_function == "mse") {
-      KALDI_LOG << "MPI job " << mpi_rank << " " << mse.Report() << std::endl;
+      loss = mse.GetLoss();
+      num_frames = mse.GetFrames();
     } else {
       KALDI_ERR << "Unknown objective function code : " << objective_function;
+    }
+
+    double global_loss;
+    int32 global_num_frames;
+    MPI_Reduce(&loss, &global_loss, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&num_frames, &global_num_frames, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    if (mpi_rank == 0) {
+      KALDI_LOG << "AvgLoss: " << global_loss/global_num_frames << " (" << objective_function << ")";
+    }
+    
+    if (objective_function == "xent") {
+      int32 correct = xent.GetCorrect();
+      int32 global_correct;
+      MPI_Reduce(&correct, &global_correct, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+      if (mpi_rank == 0) {
+        KALDI_LOG << "\n\nFRAME_ACCURACY >> " << 100.0*global_correct/global_num_frames << "% <<";
+      }
     }
 
 #if HAVE_CUDA==1

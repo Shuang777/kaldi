@@ -44,6 +44,7 @@
 $num_jobs = 0;
 $job_id = 0;
 $utt2spk_file = "";
+$keep_remainder = 1;
 
 for ($x = 1; $x <= 2; $x++) {
     if ($ARGV[0] eq "-j") {
@@ -57,6 +58,10 @@ for ($x = 1; $x <= 2; $x++) {
     if ($ARGV[0] =~ "--utt2spk=(.+)") {
         $utt2spk_file=$1;
         shift;
+    }
+    if ($ARGV[0] =~ "--no-remainder") {
+      $keep_remainder = 0;
+      shift;
     }
 }
 
@@ -208,6 +213,9 @@ if ($utt2spk_file ne "") {  # We have the --utt2spk option...
     $linesperscp = int( $numlines / $numscps); # the "whole part"..
     $linesperscp >= 1 || die "You are splitting into too many pieces!";
     $remainder = $numlines - ($linesperscp * $numscps);
+    if ($keep_remainder != 1) {
+      $remainder = 0;
+    }
     ($remainder >= 0 && $remainder < $numlines) || die "bad remainder $remainder";
     # [just doing int() rounds down].
     $n = 0;
@@ -219,7 +227,9 @@ if ($utt2spk_file ne "") {  # We have the --utt2spk option...
         }
         close(O) || die "Closing scp file $scpfile";
     }
-    $n == $numlines || die "split_scp.pl: code error., $n != $numlines";
+    if ($keep_remainder == 1) {
+      $n == $numlines || die "split_scp.pl: code error., $n != $numlines";
+    }
 }
 
 exit ($error ? 1 : 0);

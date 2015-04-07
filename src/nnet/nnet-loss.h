@@ -52,6 +52,12 @@ class Xent {
   /// Generate string with error report
   std::string Report();
 
+  double GetLoss() { return loss_-entropy_; }
+
+  double GetCorrect() { return correct_; }
+
+  double GetFrames() { return frames_; }
+
  private:
   int32 frames_;
   int32 correct_;
@@ -97,6 +103,10 @@ class Mse {
   
   /// Generate string with error report
   std::string Report();
+
+  double GetLoss() { return loss_; }
+
+  double GetFrames() { return frames_; }
 
  private:
   int32 frames_;
