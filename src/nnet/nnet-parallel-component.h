@@ -165,10 +165,14 @@ class ParallelComponent : public UpdatableComponent {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
-  void AverageElements(const BaseFloat* v) { 
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
-    
+  
+  void SetElements(const BaseFloat* v) { 
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
   std::string Info() const { 
     std::ostringstream os;
     for (int32 i=0; i<nnet_.size(); i++) {

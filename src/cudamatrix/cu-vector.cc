@@ -833,21 +833,21 @@ void CuVectorBase<Real>::CopyFromArray(const Real *v) {
 }
 
 template<typename Real>
-void CuVectorBase<Real>::AverageArray(const Real *v) {
+void CuVectorBase<Real>::AverageArray(const Real alpha, const Real *v, const Real beta) {
 #if HAVE_CUDA == 1
   if (CuDevice::Instantiate().Enabled()) { 
     Timer tim;
     int32 dim = this->dim_;
     Real *data = this->data_;
-    cuda_scal(dim, 0.5, data, 1);
-    cuda_axpy(dim, 0.5, v, 1, data, 1);
+    cuda_scal(dim, alpha, data, 1);
+    cuda_axpy(dim, beta, v, 1, data, 1);
     CU_SAFE_CALL(cudaGetLastError());    
     CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
   } else
 #endif
   {
     for (int32 i=0; i<dim_; i++) {
-      data_[i] = (data_[i] + v[i]) / 2;
+      data_[i] = alpha * data_[i] + beta * v[i];
     }
   }
 }

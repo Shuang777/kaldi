@@ -41,6 +41,7 @@ semi_layers=-1
 updatable_layers=""
 frames_per_avg=
 avg_per_iter_tr=
+average_type=
 
 # End configuration.
 
@@ -116,6 +117,7 @@ for iter in $(seq -w $max_iters); do
    --updatable-layers=$updatable_layers \
    --binary=true --semi-layers=$semi_layers $frame_weights_opt \
    ${avg_per_iter_tr:+ --max-avg-count=$avg_per_iter_tr} \
+   ${average_type:+ --average-type=$average_type} \
    ${frames_per_avg:+ --frames-per-avg=$frames_per_avg} \
    ${feature_transform:+ --feature-transform=$feature_transform} \
    ${feature_transform_list:+ --feature-transform-list=$feature_transform_list} \

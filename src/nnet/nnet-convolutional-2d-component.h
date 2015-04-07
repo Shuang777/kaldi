@@ -247,7 +247,7 @@ class Convolutional2DComponent : public UpdatableComponent {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
-  void AverageElements(const BaseFloat *v) {
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 

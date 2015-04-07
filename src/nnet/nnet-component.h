@@ -220,8 +220,10 @@ class UpdatableComponent : public Component {
   virtual int32 NumParams() const = 0;
   virtual int32 NumElements() const = 0;
   virtual void GetParams(Vector<BaseFloat> *params) const = 0;
+  /// Copy weights (including strides) to an array (CPU based, allocated beforehand)
   virtual void GetElements(BaseFloat *params) const = 0;
-  virtual void AverageElements(const BaseFloat *params) = 0;
+  /// Average weights (including strides) with values in an array (GPU/CPU based, allocated beforehand)
+  virtual void AverageElements(const BaseFloat alpha, const BaseFloat *params, const BaseFloat beta) = 0;
 
   /// Compute gradient and update parameters
   virtual void Update(const CuMatrixBase<BaseFloat> &input,

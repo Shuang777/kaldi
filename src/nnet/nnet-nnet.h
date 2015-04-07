@@ -118,6 +118,9 @@ class Nnet {
   /// Average model with weights in receive buffer
   void AverageReceiveBuffer();
 
+  /// Set the model with weights in the buffer and scale it
+  void SetAndScaleBuffer(const BaseFloat scale);
+
   /// Initialize MLP from config
   void Init(const std::string &config_file);
   /// Read the MLP from file (can add layers to exisiting instance of Nnet)

@@ -64,6 +64,14 @@ void share_and_average(Nnet &nnet, const int rank_id, const int friend_id) {
   nnet.AverageReceiveBuffer();
 }
 
+void all_reduce_average(Nnet &nnet, const int mpi_jobs) {
+  int num_elements = nnet.NumElements();
+  nnet.PrepSendBuffer();
+  MPI_Allreduce(nnet.GetSendBuffer(), nnet.GetReceiveBuffer(), num_elements, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+  float scale = 1.0/mpi_jobs;
+  nnet.SetAndScaleBuffer(scale);
+}
+
 int main(int argc, char *argv[]) {
   typedef kaldi::int32 int32;  
   
@@ -120,6 +128,9 @@ int main(int argc, char *argv[]) {
     
     double dropout_retention = 0.0;
     po.Register("dropout-retention", &dropout_retention, "number between 0..1, saying how many neurons to preserve (0.0 will keep original value");
+
+    std::string average_type = "butterfly";
+    po.Register("average-type", &average_type, "Average strategy for MPI jobs (default = butterfly)");
      
     
     po.Read(argc, argv);
@@ -366,11 +377,16 @@ int main(int argc, char *argv[]) {
         }
 
         if (!crossvalidate && total_frames/frames_per_avg != ((total_frames+nnet_in.NumRows())/frames_per_avg)) { // average every frames_per_avg frames
-          int32 friend_id = get_friend_id(mpi_rank, mpi_jobs, average_count);
           if (mpi_rank == 0)
-            KALDI_LOG << "### MPI averaging after " << total_frames+nnet_in.NumRows() << " frames.";
-//          KALDI_LOG << "Rank " << mpi_rank << " friend id " << friend_id;
-          share_and_average(nnet, mpi_rank, friend_id);
+            KALDI_LOG << "### MPI " << average_type << " averaging after " << total_frames+nnet_in.NumRows() << " frames.";
+          
+          if (average_type == "butterfly") {
+            int32 friend_id = get_friend_id(mpi_rank, mpi_jobs, average_count);
+  //          KALDI_LOG << "Rank " << mpi_rank << " friend id " << friend_id;
+            share_and_average(nnet, mpi_rank, friend_id);
+          } else if (average_type == "allreduce") {
+            all_reduce_average(nnet, mpi_jobs);
+          }
           average_count++;
         }
         
@@ -378,8 +394,12 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    while(!feature_reader.Done())
+    // Read all the features that are left, just to prevent WARNINGs from pipe
+    while(!feature_reader.Done()) {
       feature_reader.Next();
+      std::string utt = feature_reader.Key();
+      targets_reader.Value(utt);
+    }
     
     // after last minibatch : show what happens in network 
     if (kaldi::g_kaldi_verbose_level >= 1 && mpi_rank == 0) { // vlog-1

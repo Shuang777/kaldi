@@ -172,8 +172,12 @@ class CuMatrixBase {
   void CopyRowsFromVec(const VectorBase<Real> &v);
 
   void CopyToArray(Real *v) const;
+ 
+  /// data_ = alpha * data_ + beta * v
+  void AverageArray(const Real alpha, const Real *v, const Real beta);
   
-  void AverageArray(const Real *v);
+  /// Copy from CPU array
+  void CopyFromArray(const Real *v);
   
   /// Copy vector into specific column of matrix.
   void CopyColFromVec(const CuVectorBase<Real> &v, const MatrixIndexT col);

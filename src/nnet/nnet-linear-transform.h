@@ -101,8 +101,8 @@ class LinearTransform : public UpdatableComponent {
     linearity_.CopyToArray(v); 
   }
 
-  void AverageElements(const BaseFloat *v) {
-    linearity_.AverageArray(v);
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
+    linearity_.AverageArray(alpha, v, beta);
   }
   
   std::string Info() const {

@@ -137,11 +137,11 @@ class AffineTransform : public UpdatableComponent {
     bias_.CopyToArray(&wei_copy[offset]);
   }
 
-  void AverageElements(const BaseFloat* v) {
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
     int32 offset = 0;
-    linearity_.AverageArray(&v[offset]);
+    linearity_.AverageArray(alpha, &v[offset], beta);
     offset += linearity_.NumRows() * linearity_.Stride();
-    bias_.AverageArray(&v[offset]);
+    bias_.AverageArray(alpha, &v[offset], beta);
   }
   
   std::string Info() const {

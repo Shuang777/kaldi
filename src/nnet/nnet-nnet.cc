@@ -450,11 +450,27 @@ void Nnet::AverageReceiveBuffer() {
   for(int32 i=0; i<components_.size(); i++) {
     if(components_[i]->IsUpdatable()) {
       UpdatableComponent& c = dynamic_cast<UpdatableComponent&>(*components_[i]);
-      c.AverageElements(&cuda_receive_buffer_ptr[pos]);
+      c.AverageElements(0.5, &cuda_receive_buffer_ptr[pos], 0.5);
       pos += c.NumElements();
     }
   }
   KALDI_ASSERT(pos == NumElements());
+}
+
+void Nnet::SetAndScaleBuffer(const BaseFloat scale) {
+  cuda_receive_buffer_.CopyFromArray(receive_buffer_);
+  BaseFloat *cuda_receive_buffer_ptr = cuda_receive_buffer_.Data();
+  int32 pos = 0;
+  // copy the elements
+  for(int32 i=0; i<components_.size(); i++) {
+    if(components_[i]->IsUpdatable()) {
+      UpdatableComponent& c = dynamic_cast<UpdatableComponent&>(*components_[i]);
+      c.AverageElements(0.0, &cuda_receive_buffer_ptr[pos], scale);
+      pos += c.NumElements();
+    }
+  }
+  KALDI_ASSERT(pos == NumElements());
+
 }
 
 void Nnet::Init(const std::string &file) {

@@ -476,8 +476,12 @@ class AddShift : public UpdatableComponent {
     shift_data_.CopyToArray(wei_copy);
   }
 
-  void AverageElements(const BaseFloat* v) {
-    shift_data_.AverageArray(v);
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
+    shift_data_.AverageArray(alpha, v, beta);
+  }
+  
+  void SetElements(const BaseFloat* v) {
+    shift_data_.CopyFromArray(v);
   }
    
   std::string Info() const {
@@ -601,8 +605,12 @@ class Rescale : public UpdatableComponent {
     scale_data_.CopyToArray(wei_copy);
   }
 
-  void AverageElements(const BaseFloat* v) {
-    scale_data_.AverageArray(v);
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
+    scale_data_.AverageArray(alpha, v, beta);
+  }
+  
+  void SetElements(const BaseFloat* v) {
+    scale_data_.CopyFromArray(v);
   }
  
   std::string Info() const {

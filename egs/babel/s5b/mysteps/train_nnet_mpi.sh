@@ -65,8 +65,11 @@ semi_layers=-1
 semi_cv=false   # also use semi data for cross-validation
 max_iters=20
 updatable_layers=""
+
+# mpi training
 mpi_jobs=2
 frames_per_avg=12000
+average_type=
 
 # End configuration.
 
@@ -395,6 +398,7 @@ mysteps/train_nnet_scheduler.sh \
   --train-tool "mpirun -n $mpi_jobs nnet-train-frmshuff-mpi" \
   --frames-per-avg $frames_per_avg \
   --avg-per-iter-tr $avg_per_iter_tr \
+  ${average_type:+ --average-type $average_type} \
   ${train_opts} \
   ${config:+ --config $config} \
   $mlp_init "$feats_tr_mpi" "$feats_cv_mpi" "$labels_tr" "$labels_cv" $dir || exit 1

@@ -87,9 +87,11 @@ class CuVectorBase {
 
   void CopyToArray(Real *v) const;
   
+  /// Copy from CPU array
   void CopyFromArray(const Real *v);
   
-  void AverageArray(const Real *v);
+  /// data_ = alpha * data_ + beta * v
+  void AverageArray(const Real alpha, const Real *v, const Real Beta);
   
   void CopyRowsFromMat(const CuMatrixBase<Real> &M);
 
