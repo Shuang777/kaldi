@@ -68,8 +68,8 @@ updatable_layers=""
 
 # mpi training
 mpi_jobs=2
-frames_per_avg=12000
-average_type=
+frames_per_reduce=12000
+reduce_type=
 
 # End configuration.
 
@@ -254,9 +254,9 @@ for n in $(seq $mpi_jobs); do
   cat $dir/cv.filtered.scp | utils/filter_scp.pl $dir/cv_list.$n.scp > $dir/cv.$n.scp
 done
 
-avg_per_iter_tr=$(echo $min_frames_tr/$frames_per_avg | bc)
+reduce_per_iter_tr=$(echo $min_frames_tr/$frames_per_reduce | bc)
 
-echo "avg_per_iter_tr=$avg_per_iter_tr"
+echo "reduce_per_iter_tr=$reduce_per_iter_tr"
 
 feats_tr="ark:copy-feats scp:$dir/train.scp ark:- |"
 feats_tr_mpi="ark:copy-feats scp:$dir/train.MPI_RANK.scp ark:- |"
@@ -394,11 +394,11 @@ mysteps/train_nnet_scheduler.sh \
   --resume-anneal $resume_anneal \
   --semi-layers $semi_layers \
   --max-iters $max_iters \
-  --updatable-layers "$updatable_layers" \
   --train-tool "mpirun -n $mpi_jobs nnet-train-frmshuff-mpi" \
-  --frames-per-avg $frames_per_avg \
-  --avg-per-iter-tr $avg_per_iter_tr \
-  ${average_type:+ --average-type $average_type} \
+  --frames-per-reduce $frames_per_reduce \
+  --reduce-per-iter-tr $reduce_per_iter_tr \
+  ${updatable_layers:+ --updatable-layers $updatable_layers} \
+  ${reduce_type:+ --reduce-type $reduce_type} \
   ${train_opts} \
   ${config:+ --config $config} \
   $mlp_init "$feats_tr_mpi" "$feats_cv_mpi" "$labels_tr" "$labels_cv" $dir || exit 1

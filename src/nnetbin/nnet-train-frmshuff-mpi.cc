@@ -30,7 +30,7 @@ using namespace kaldi;
 using namespace kaldi::nnet1;
 
 /// Butterfly mixing
-int get_friend_id(int mpi_rank, int mpi_jobs, int round_i) {
+int get_butterfly_friend_id(int mpi_rank, int mpi_jobs, int round_i) {
   int rounds = round(log2(mpi_jobs));
   return mpi_rank ^ (1 << (round_i % rounds));
 }
@@ -39,28 +39,15 @@ bool is_power_of_two(int x) {
   return ((x != 0) && !(x & (x-1)));
 }
 
-void share_and_average(Nnet &nnet, const int rank_id, const int friend_id) {
-  KALDI_ASSERT(rank_id != friend_id);
-  int num_elements = nnet.NumElements();
-  int num_elements_friend = 0;
+void share_and_average(Nnet &nnet, const int rank_id, const int send_to_id, const int receive_from_id) {
+  KALDI_ASSERT(rank_id != send_to_id && rank_id != receive_from_id);
 
   nnet.PrepSendBuffer();
+  
+  int num_elements = nnet.NumElements();
+  
+  MPI_Sendrecv(nnet.GetSendBuffer(), num_elements, MPI_FLOAT, send_to_id, 0, nnet.GetReceiveBuffer(), num_elements, MPI_FLOAT, receive_from_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-  if (rank_id < friend_id) {
-    MPI_Send(&num_elements, 1, MPI_INT, friend_id, 0, MPI_COMM_WORLD);
-    MPI_Recv(&num_elements_friend, 1, MPI_INT, friend_id, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    KALDI_ASSERT(num_elements == num_elements_friend);
-
-    MPI_Send(nnet.GetSendBuffer(), num_elements, MPI_FLOAT, friend_id, 0, MPI_COMM_WORLD);
-    MPI_Recv(nnet.GetReceiveBuffer(), num_elements, MPI_FLOAT, friend_id, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  } else {
-    MPI_Recv(&num_elements_friend, 1, MPI_INT, friend_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Send(&num_elements, 1, MPI_INT, friend_id, 1, MPI_COMM_WORLD);
-    KALDI_ASSERT(num_elements == num_elements_friend);
-
-    MPI_Recv(nnet.GetReceiveBuffer(), num_elements, MPI_FLOAT, friend_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Send(nnet.GetSendBuffer(), num_elements, MPI_FLOAT, friend_id, 1, MPI_COMM_WORLD);
-  }
   nnet.AverageReceiveBuffer();
 }
 
@@ -120,17 +107,17 @@ int main(int argc, char *argv[]) {
     std::string ref_model_filename="None";
     po.Register("ref-nnet", &ref_model_filename, "Reference nnet for regularization (default None)");
 
-    int32 frames_per_avg = 10000;
-    po.Register("frames-per-avg", &frames_per_avg, "Number of frames per average operation on MPI (default = 10000)");
+    int32 frames_per_reduce = 10000;
+    po.Register("frames-per-reduce", &frames_per_reduce, "Number of frames per average operation on MPI (default = 10000)");
     
-    int32 max_avg_count = INT_MAX;
-    po.Register("max-avg-count", &max_avg_count, "Maximum number of average operation. (default = 10000)");
+    int32 max_reduce_count = INT_MAX;
+    po.Register("max-reduce-count", &max_reduce_count, "Maximum number of average operation. (default = 10000)");
     
     double dropout_retention = 0.0;
     po.Register("dropout-retention", &dropout_retention, "number between 0..1, saying how many neurons to preserve (0.0 will keep original value");
 
-    std::string average_type = "butterfly";
-    po.Register("average-type", &average_type, "Average strategy for MPI jobs (default = butterfly)");
+    std::string reduce_type = "butterfly";
+    po.Register("reduce-type", &reduce_type, "Reduce strategy for MPI jobs (butterfly|allreduce|ring|hoppingring, default = butterfly)");
      
     
     po.Read(argc, argv);
@@ -148,8 +135,15 @@ int main(int argc, char *argv[]) {
     int32 mpi_rank = MPI::COMM_WORLD.Get_rank();
     int32 mpi_jobs = MPI::COMM_WORLD.Get_size();
 
+    if (mpi_rank != 0) {
+      kaldi::g_kaldi_verbose_level = 0;
+    }
+
     KALDI_ASSERT(mpi_jobs > 1);
-    KALDI_ASSERT(is_power_of_two(mpi_jobs));
+    if (reduce_type == "butterfly") {
+      // we only support 2^N jobs for butterfly mixing
+      KALDI_ASSERT(is_power_of_two(mpi_jobs));
+    }
 
     std::string rank_str;
     {
@@ -191,8 +185,7 @@ int main(int argc, char *argv[]) {
     if (!crossvalidate) {
       nnet.AllocBuffer();
     }
-    int32 average_count = 0;
-
+    
     Nnet ref_nnet;
     if (ref_model_filename != "None") {
       ref_nnet.Read(ref_model_filename);
@@ -228,11 +221,16 @@ int main(int argc, char *argv[]) {
     CuMatrix<BaseFloat> feats_transf, nnet_out, obj_diff;
 
     Timer time;
+    Timer mpi_timer;
+    double mpi_time = 0;
+    int32 reduce_count = 0;
+    int32 reduce_shift = 1;
+
     if (mpi_rank == 0)
       KALDI_LOG << (crossvalidate?"CROSS-VALIDATION":"TRAINING") << " STARTED";
 
     int32 num_done = 0, num_no_tgt_mat = 0, num_other_error = 0;
-    while (!feature_reader.Done() && average_count < max_avg_count) {
+    while (!feature_reader.Done() && reduce_count < max_reduce_count) {
 #if HAVE_CUDA==1
       // check the GPU is not overheated
       CuDevice::Instantiate().CheckGpuHealth();
@@ -315,7 +313,7 @@ int main(int argc, char *argv[]) {
       }
 
       // train with data from randomizers (using mini-batches)
-      for ( ; !feature_randomizer.Done() && average_count < max_avg_count; feature_randomizer.Next(),
+      for ( ; !feature_randomizer.Done() && reduce_count < max_reduce_count; feature_randomizer.Next(),
                                           targets_randomizer.Next(),
                                           weights_randomizer.Next()) {
         // get block of feature/target pairs
@@ -376,30 +374,36 @@ int main(int argc, char *argv[]) {
           }
         }
 
-        if (!crossvalidate && total_frames/frames_per_avg != ((total_frames+nnet_in.NumRows())/frames_per_avg)) { // average every frames_per_avg frames
+        if (!crossvalidate && total_frames/frames_per_reduce != ((total_frames+nnet_in.NumRows())/frames_per_reduce)) { // reduce every frames_per_reduce frames
+          mpi_timer.Reset();
           if (mpi_rank == 0)
-            KALDI_LOG << "### MPI " << average_type << " averaging after " << total_frames+nnet_in.NumRows() << " frames.";
+            KALDI_LOG << "### MPI " << reduce_type << " reducing after " << total_frames+nnet_in.NumRows() << " frames.";
           
-          if (average_type == "butterfly") {
-            int32 friend_id = get_friend_id(mpi_rank, mpi_jobs, average_count);
-  //          KALDI_LOG << "Rank " << mpi_rank << " friend id " << friend_id;
-            share_and_average(nnet, mpi_rank, friend_id);
-          } else if (average_type == "allreduce") {
+          if (reduce_type == "butterfly") {
+            int32 friend_id = get_butterfly_friend_id(mpi_rank, mpi_jobs, reduce_count);
+            share_and_average(nnet, mpi_rank, friend_id, friend_id);
+          } else if (reduce_type == "allreduce") {
             all_reduce_average(nnet, mpi_jobs);
+          } else if (reduce_type == "ring") {
+            share_and_average(nnet, mpi_rank, (mpi_rank + 1) % mpi_jobs, (mpi_rank + mpi_jobs - 1) % mpi_jobs);
+          } else if (reduce_type == "hoppingring") {
+            share_and_average(nnet, mpi_rank, (mpi_rank + reduce_shift) % mpi_jobs, (mpi_rank + mpi_jobs - reduce_shift) % mpi_jobs);
           }
-          average_count++;
+          reduce_shift = (reduce_shift + 1) % mpi_jobs;
+          if (reduce_shift == 0) {    // avoid averaging with itself
+            reduce_shift = 1;
+          }
+          reduce_count++;
+          mpi_time += mpi_timer.Elapsed();
         }
         
         total_frames += nnet_in.NumRows();
       }
     }
 
-    // Read all the features that are left, just to prevent WARNINGs from pipe
-    while(!feature_reader.Done()) {
-      feature_reader.Next();
-      std::string utt = feature_reader.Key();
-      targets_reader.Value(utt);
-    }
+    // Avoid WARNINGs from pipe
+    feature_reader.Close();
+    targets_reader.Close();
     
     // after last minibatch : show what happens in network 
     if (kaldi::g_kaldi_verbose_level >= 1 && mpi_rank == 0) { // vlog-1
@@ -421,6 +425,7 @@ int main(int argc, char *argv[]) {
               << "[" << (crossvalidate?"CROSS-VALIDATION":"TRAINING")
               << ", " << (randomize?"RANDOMIZED":"NOT-RANDOMIZED") 
               << ", " << time.Elapsed()/60 << " min, fps" << total_frames/time.Elapsed()
+              << ", MPI time " << mpi_time/60 << " min"
               << "]";  
 
     double loss;
@@ -455,7 +460,9 @@ int main(int argc, char *argv[]) {
     }
 
 #if HAVE_CUDA==1
-    CuDevice::Instantiate().PrintProfile();
+    if (mpi_rank == 0) {
+      CuDevice::Instantiate().PrintProfile();
+    }
 #endif
 
     MPI::Finalize();

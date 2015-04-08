@@ -39,9 +39,9 @@ frame_weights=
 subnnet_ids=
 semi_layers=-1
 updatable_layers=""
-frames_per_avg=
-avg_per_iter_tr=
-average_type=
+frames_per_reduce=
+reduce_per_iter_tr=
+reduce_type=
 
 # End configuration.
 
@@ -84,7 +84,6 @@ mlp_base=${mlp_init##*/}; mlp_base=${mlp_base%.*}
 [ -e $dir/.learn_rate ] && learn_rate=$(cat $dir/.learn_rate)
 
 [ ! -z "$subnnet_ids" ] && subnnet_ids_arg="ark:$subnnet_ids"     # this is for multi_nnet_training
-[ ! -z "$frames_per_avg" ] && nnet_average_arg="--frames-per-avg=$frames_per_avg"     # this is for nnet mpi training
 
 # cross-validation on original network
 $train_tool --cross-validate=true \
@@ -114,11 +113,11 @@ for iter in $(seq -w $max_iters); do
   $train_tool \
    --learn-rate=$learn_rate --momentum=$momentum --l1-penalty=$l1_penalty --l2-penalty=$l2_penalty \
    --minibatch-size=$minibatch_size --randomizer-size=$randomizer_size --randomize=true --verbose=$verbose \
-   --updatable-layers=$updatable_layers \
    --binary=true --semi-layers=$semi_layers $frame_weights_opt \
-   ${avg_per_iter_tr:+ --max-avg-count=$avg_per_iter_tr} \
-   ${average_type:+ --average-type=$average_type} \
-   ${frames_per_avg:+ --frames-per-avg=$frames_per_avg} \
+   ${updatable_layers:+ --updatable-layers=$updatable_layers} \
+   ${reduce_per_iter_tr:+ --max-reduce-count=$reduce_per_iter_tr} \
+   ${reduce_type:+ --reduce-type=$reduce_type} \
+   ${frames_per_reduce:+ --frames-per-reduce=$frames_per_reduce} \
    ${feature_transform:+ --feature-transform=$feature_transform} \
    ${feature_transform_list:+ --feature-transform-list=$feature_transform_list} \
    ${randomizer_seed:+ --randomizer-seed=$randomizer_seed} \
