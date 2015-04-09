@@ -19,7 +19,11 @@
 # run them in parallel and write log to some.log.xx
 # note that current script restrict jobs perbatch to be less than or equal to 64
 
+use POSIX;
+
 @ARGV < 2 && die "usage: slurm.pl log-file command-line arguments...";
+
+$SIG{INT}  = \&signal_handler;
 
 $totaljobstart=1;
 $totaljobend=1;
@@ -28,10 +32,18 @@ $jobsperbatch=0;
 $gpuarg = '';
 $memfreearg = '';
 $mode = 'cmdline';	# 'cmdline' is the default mode
+%childpids = ();
 
 sub roundup {
   my $n = shift;
   return(($n == int($n)) ? $n: int($n+1))
+}
+
+sub signal_handler {
+  print "Here it caught signal $!\n";
+  for my $childpid (values %childpids) {
+    kill 'SIGINT', $childpid;
+  }
 }
 
 if (@ARGV > 0) {
@@ -133,73 +145,76 @@ if ($mode eq 'cmdline') {
 
 $numjobs = ($totaljobend - $totaljobstart + 1);
 for ($batchi = 0; $batchi < roundup($numjobs / $jobsperbatch); $batchi++) {
-$jobstart = $totaljobstart + $jobsperbatch * $batchi;
-$jobend = $totaljobstart + $jobsperbatch * ($batchi + 1) - 1;
-if ($jobend > $totaljobend){
-  $jobend = $totaljobend;
-}
-for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
-  $childpid = fork();
-  if (!defined $childpid) { die "Error forking in slurm.pl (writing to $logfile)"; }
-  if ($childpid == 0) { # We're in the child... this branch
-    # executes the job and returns (possibly with an error status).
-    if ($mode eq "script") {
-      $cmd = $cmds[$jobid-1];
-      $logfile = $logfile . '.' . $jobid;
-    } elsif (defined $jobname) { 
-      $cmd =~ s/$jobname/$jobid/g;
-      $logfile =~ s/$jobname/$jobid/g;
-    }
-    $cmd="set -e; set -o pipefail; $cmd";
-    $precmd = "srun -N 1 -n 1 --msg-timeout=60 -c $threadsperjob $gpuarg $memfreearg bash";
-    system("echo $logfile");
-    system("mkdir -p `dirname $logfile` 2>/dev/null");
-    open(F, ">$logfile") || die "Error opening log file $logfile";
-    print F "# " . $precmd . "\n";
-    print F "# " . $cmd . "\n";
-    print F "# Started at " . `date`;
-    $starttime = `date +'%s'`;
-    print F "#\n";
-    close(F);
-
-    # Pipe into bash.. make sure we're not using any other shell.
-    open(B, "|-", "$precmd") || die "Error opening shell command"; 
-    print B "( " . $cmd . ") 2>>$logfile >> $logfile";
-    close(B);                   # If there was an error, exit status is in $?
-    $ret = $?;
-
-    $endtime = `date +'%s'`;
-    open(F, ">>$logfile") || die "Error opening log file $logfile (again)";
-    $enddate = `date`;
-    chop $enddate;
-    print F "# Ended (code $ret) at " . $enddate . ", elapsed time " . ($endtime-$starttime) . " seconds\n";
-    close(F);
-    exit($ret == 0 ? 0 : 1);
+  $jobstart = $totaljobstart + $jobsperbatch * $batchi;
+  $jobend = $totaljobstart + $jobsperbatch * ($batchi + 1) - 1;
+  if ($jobend > $totaljobend){
+    $jobend = $totaljobend;
   }
-}
+  for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
+    $childpid = fork();
+    if (!defined $childpid) { die "Error forking in slurm.pl (writing to $logfile)"; }
+    if ($childpid == 0) { # We're in the child... this branch
+      # executes the job and returns (possibly with an error status).
+      if ($mode eq "script") {
+        $cmd = $cmds[$jobid-1];
+        $logfile = $logfile . '.' . $jobid;
+      } elsif (defined $jobname) { 
+        $cmd =~ s/$jobname/$jobid/g;
+        $logfile =~ s/$jobname/$jobid/g;
+      }
+      $cmd="set -e; set -o pipefail; $cmd";
+      $precmd = "srun -N 1 -n 1 --msg-timeout=60 -c $threadsperjob $gpuarg $memfreearg bash";
+      system("echo $logfile");
+      system("mkdir -p `dirname $logfile` 2>/dev/null");
+      open(F, ">$logfile") || die "Error opening log file $logfile";
+      print F "# " . $precmd . "\n";
+      print F "# " . $cmd . "\n";
+      print F "# Started at " . `date`;
+      $starttime = `date +'%s'`;
+      print F "#\n";
+      close(F);
 
-$ret = 0;
-$numfail = 0;
-for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
-  $r = wait();
-  if ($r == -1) { die "Error waiting for child process"; } # should never happen.
-  if ($? != 0) { $numfail++; $ret = 1; } # The child process failed.
-}
+      # Pipe into bash.. make sure we're not using any other shell.
+      open(B, "|-", "$precmd") || die "Error opening shell command"; 
+      print B "( " . $cmd . ") 2>>$logfile >> $logfile";
+      close(B);                   # If there was an error, exit status is in $?
+      $ret = $?;
 
-if ($ret != 0) {
-  $njobs = $jobend - $jobstart + 1;
-  if ($njobs == 1) { 
-    print STDERR "slurm.pl: job failed, log is in $logfile\n";
-    if ($logfile =~ m/JOB/) {
-      print STDERR "slurm.pl: probably you forgot to put JOB=1:\$nj in your script.\n";
+      $endtime = `date +'%s'`;
+      open(F, ">>$logfile") || die "Error opening log file $logfile (again)";
+      $enddate = `date`;
+      chop $enddate;
+      print F "# Ended (code $ret) at " . $enddate . ", elapsed time " . ($endtime-$starttime) . " seconds\n";
+      close(F);
+      exit($ret == 0 ? 0 : 1);
+    } else {
+      $childpids{$jobid} = $childpid;
     }
   }
-  else {
-    if (defined $jobname) {
-      $logfile =~ s/$jobname/*/g;
-    }
-    print STDERR "slurm.pl: $numfail / $njobs failed, log is in $logfile\n";
+
+  $ret = 0;
+  $numfail = 0;
+  for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
+    $r = wait();
+    delete $childpids{$jobid};
+    if ($r == -1) { die "Error waiting for child process"; } # should never happen.
+    if ($? != 0) { $numfail++; $ret = 1; } # The child process failed.
   }
-}
+
+  if ($ret != 0) {
+    $njobs = $jobend - $jobstart + 1;
+    if ($njobs == 1) { 
+      print STDERR "slurm.pl: job failed, log is in $logfile\n";
+      if ($logfile =~ m/JOB/) {
+        print STDERR "slurm.pl: probably you forgot to put JOB=1:\$nj in your script.\n";
+      }
+    }
+    else {
+      if (defined $jobname) {
+        $logfile =~ s/$jobname/*/g;
+      }
+      print STDERR "slurm.pl: $numfail / $njobs failed, log is in $logfile\n";
+    }
+  }
 }
 exit ($ret);
