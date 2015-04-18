@@ -60,6 +60,10 @@ int main(int argc, char *argv[]) {
     int32 length_tolerance = 5;
     po.Register("length-tolerance", &length_tolerance, "Allowed length difference of features/targets (frames)");
 
+    int32 num_iters = 1; 
+    po.Register("num-iters", &num_iters, 
+                "Number of iterations (smaller datasets should have more iterations, ");
+
     int32 semi_layers = -1;
     po.Register("semi-layers", &semi_layers, "Layers to reweight for semi data (default is -1, means no semidata)");
 
@@ -74,6 +78,10 @@ int main(int argc, char *argv[]) {
     
     std::string ref_model_filename="None";
     po.Register("ref-nnet", &ref_model_filename, "Reference nnet for regularization (default None)");
+
+
+    std::string cv_feature_rspecifier = "";
+    po.Register("cv-feature", &cv_feature_rspecifier, "Perform cross validation along the training process");
     
     double dropout_retention = 0.0;
     po.Register("dropout-retention", &dropout_retention, "number between 0..1, saying how many neurons to preserve (0.0 will keep original value");
@@ -155,6 +163,9 @@ int main(int argc, char *argv[]) {
 
     Timer time;
     KALDI_LOG << (crossvalidate?"CROSS-VALIDATION":"TRAINING") << " STARTED";
+
+    int32 iter = 1;
+    KALDI_LOG << "Iteration " << iter << "/" << num_iters;
 
     int32 num_done = 0, num_no_tgt_mat = 0, num_other_error = 0;
     while (!feature_reader.Done()) {
@@ -302,6 +313,37 @@ int main(int argc, char *argv[]) {
         }
         
         total_frames += nnet_in.NumRows();
+      }
+
+      // reopen the feature stream if we will run another iteration
+      if (feature_reader.Done() && (iter < num_iters)) {
+        iter++;
+        KALDI_LOG << "Iteration " << iter << "/" << num_iters;
+        feature_reader.Close();
+        feature_reader.Open(feature_rspecifier);
+
+        KALDI_LOG << "Done " << num_done << " files, " << num_no_tgt_mat
+                  << " with no tgt_mats, " << num_other_error
+                  << " with other errors. "
+                  << "[" << (crossvalidate?"CROSS-VALIDATION":"TRAINING")
+                  << ", " << (randomize?"RANDOMIZED":"NOT-RANDOMIZED") 
+                  << ", " << time.Elapsed()/60 << " min, fps" << total_frames/time.Elapsed()
+                  << "]";  
+
+        if (objective_function == "xent") {
+          KALDI_LOG << xent.Report();
+          xent.Reset();
+        } else if (objective_function == "mse") {
+          KALDI_LOG << mse.Report();
+          mse.Reset();
+        } else {
+          KALDI_ERR << "Unknown objective function code : " << objective_function;
+        }
+        if (!crossvalidate) {
+          std::stringstream ss;
+          ss << iter;
+          nnet.Write(target_model_filename + "." + ss.str(), binary);
+        }
       }
     }
     
