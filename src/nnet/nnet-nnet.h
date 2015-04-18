@@ -35,7 +35,7 @@ namespace nnet1 {
 
 class Nnet {
  public:
-  Nnet() : send_buffer_(NULL), receive_buffer_(NULL) {}
+  Nnet() : send_buffer_(NULL), receive_buffer_(NULL), reduce_content_ ("model") {}
   Nnet(const Nnet& other); // Copy constructor.
   Nnet &operator = (const Nnet& other); // Assignment operator.
 
@@ -64,6 +64,8 @@ class Nnet {
   const Component& GetComponent(int32 c) const;
   Component& GetComponent(int32 c);
 
+  std::string GetReduceContent() const { return reduce_content_; }
+
   /// Sets the c'th component to "component", taking ownership of the pointer
   /// and deleting the corresponding one that we own.
   void SetComponent(int32 c, Component *component);
@@ -73,6 +75,9 @@ class Nnet {
 
   /// Set reference nnet for regularization
   void SetRefNnet(const Nnet& ref_nnet);
+
+  /// Set content to reduce in MPI
+  void SetReduceContent(std::string content);
  
   /// Appends this component to the components already in the neural net.
   /// Takes ownership of the pointer
@@ -117,6 +122,9 @@ class Nnet {
 
   /// Average model with weights in receive buffer
   void AverageReceiveBuffer();
+
+  /// Copy gradient from bufer and update
+  void CopyBufferAndUpdate();
 
   /// Set the model with weights in the buffer and scale it
   void SetAndScaleBuffer(const BaseFloat scale);
@@ -165,6 +173,7 @@ class Nnet {
   BaseFloat* send_buffer_;    // buffer for MPI communication
   BaseFloat* receive_buffer_; // buffer for MPI communication
   CuVector<BaseFloat> cuda_receive_buffer_;
+  std::string reduce_content_;    // model, momentum, all
 
   /// Option class with hyper-parameters passed to UpdatableComponent(s)
   NnetTrainOptions opts_;

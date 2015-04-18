@@ -465,21 +465,25 @@ class AddShift : public UpdatableComponent {
   }
   
   int32 NumParams() const { return shift_data_.Dim(); }
-  int32 NumElements() const { return shift_data_.Dim(); }
+  int32 NumElements(std::string content) const { return shift_data_.Dim(); }
 
   void GetParams(Vector<BaseFloat>* wei_copy) const {
     wei_copy->Resize(InputDim());
     shift_data_.CopyToVec(wei_copy);
   }
 
-  void GetElements(BaseFloat* wei_copy) const {
-    shift_data_.CopyToArray(wei_copy);
+  void GetElements(BaseFloat* wei_copy, const std::string content) const {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
-  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta, const std::string content) {
     shift_data_.AverageArray(alpha, v, beta);
   }
   
+  void BufferUpdate(const BaseFloat* wei_copy, const std::string content) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
   void SetElements(const BaseFloat* v) {
     shift_data_.CopyFromArray(v);
   }
@@ -594,19 +598,23 @@ class Rescale : public UpdatableComponent {
   }
 
   int32 NumParams() const { return scale_data_.Dim(); }
-  int32 NumElements() const { return scale_data_.Dim(); }
+  int32 NumElements(std::string content) const { return scale_data_.Dim(); }
 
   void GetParams(Vector<BaseFloat>* wei_copy) const {
     wei_copy->Resize(InputDim());
     scale_data_.CopyToVec(wei_copy);
   }
 
-  void GetElements(BaseFloat* wei_copy) const {
-    scale_data_.CopyToArray(wei_copy);
+  void GetElements(BaseFloat* wei_copy, const std::string content) const {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
-  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta, const std::string content) {
     scale_data_.AverageArray(alpha, v, beta);
+  }
+  
+  void BufferUpdate(const BaseFloat* wei_copy, const std::string content) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
   
   void SetElements(const BaseFloat* v) {

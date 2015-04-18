@@ -71,6 +71,8 @@ const struct Component::key_value Component::kMarkerMap[] = {
   { Component::kParallelComponent, "<ParallelComponent>"},
   { Component::kBlockAdd, "<BlockAdd>"},
   { Component::kInverseEntropy, "<InverseEntropy>"},
+  { Component::kAffineTransformPreconditioned,"<AffineTransformPreconditioned>" },
+  { Component::kAffineTransformPreconditionedOnline,"<AffineTransformPreconditionedOnline>" },
 };
 
 
@@ -174,6 +176,12 @@ Component* Component::NewComponentOfType(ComponentType comp_type,
     case Component::kInverseEntropy :
       ans = new InverseEntropy(input_dim, output_dim);
       break;
+/*    case Component::kAffineTransformPreconditioned :
+      ans = new AffineTransformPreconditioned(input_dim, output_dim);
+      break;
+    case Component::kAffineTransformPreconditionedOnline :
+      ans = new AffineTransformPreconditionedOnline(input_dim, output_dim);
+      break;*/
     case Component::kUnknown :
     default :
       KALDI_ERR << "Missing type: " << TypeToMarker(comp_type);

@@ -89,7 +89,10 @@ class LinearTransform : public UpdatableComponent {
   }
 
   int32 NumParams() const { return linearity_.NumRows()*linearity_.NumCols(); }
-  int32 NumElements() const { return linearity_.NumRows()*linearity_.Stride(); }
+  int32 NumElements(std::string content) const {
+    KALDI_ERR << __func__ << "Not implemented!";
+    return 0;
+  }
   
   void GetParams(Vector<BaseFloat>* wei_copy) const {
     wei_copy->Resize(NumParams());
@@ -97,12 +100,16 @@ class LinearTransform : public UpdatableComponent {
     wei_copy->Range(0,linearity_num_elem).CopyRowsFromMat(Matrix<BaseFloat>(linearity_));
   }
 
-  void GetElements(BaseFloat *v) const {
-    linearity_.CopyToArray(v); 
+  void GetElements(BaseFloat *v, const std::string content) const {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
 
-  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta, const std::string content) {
     linearity_.AverageArray(alpha, v, beta);
+  }
+  
+  void BufferUpdate(const BaseFloat* v, const std::string content) {
+    KALDI_ERR << __func__ << "Not implemented!";
   }
   
   std::string Info() const {

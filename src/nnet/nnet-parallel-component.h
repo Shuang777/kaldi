@@ -142,11 +142,9 @@ class ParallelComponent : public UpdatableComponent {
     return num_params_sum;
   }
   
-  int32 NumElements() const { 
-    int32 num_elements_sum = 0;
-    for (int32 i=0; i<nnet_.size(); i++) 
-      num_elements_sum += nnet_[i].NumElements();
-    return num_elements_sum;
+  int32 NumElements(std::string content) const { 
+    KALDI_ERR << __func__ << "Not implemented!";
+    return 0;
   }
 
   void GetParams(Vector<BaseFloat>* wei_copy) const { 
@@ -161,11 +159,15 @@ class ParallelComponent : public UpdatableComponent {
     KALDI_ASSERT(offset == NumParams());
   }
   
-  void GetElements(BaseFloat* wei_copy) const { 
+  void GetElements(BaseFloat* wei_copy, const std::string content) const { 
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
-  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta, const std::string content) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+  
+  void BufferUpdate(const BaseFloat* v, const std::string content) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
   

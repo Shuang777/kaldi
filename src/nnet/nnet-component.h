@@ -40,6 +40,7 @@ namespace nnet1 {
  * and backpropagate (BackpropagateFnc: i.e. transform loss derivative w.r.t. output to derivative w.r.t. the input)
  * the formulas are implemented in descendant classes (AffineTransform,Sigmoid,Softmax,...).
  */ 
+
 class Component {
 
  /// Component type identification mechanism
@@ -80,8 +81,13 @@ class Component {
     kParallelComponent,
 
     kBlockAdd = 0x0A00,
-    kInverseEntropy
+    kInverseEntropy,
+
+    kAffineTransformPreconditioned,
+    kAffineTransformPreconditionedOnline
+
   } ComponentType;
+
   /// A pair of type and marker 
   struct key_value {
     const Component::ComponentType key;
@@ -218,12 +224,14 @@ class UpdatableComponent : public Component {
 
   /// Number of trainable parameters
   virtual int32 NumParams() const = 0;
-  virtual int32 NumElements() const = 0;
+  virtual int32 NumElements(std::string content) const = 0;
   virtual void GetParams(Vector<BaseFloat> *params) const = 0;
   /// Copy weights (including strides) to an array (CPU based, allocated beforehand)
-  virtual void GetElements(BaseFloat *params) const = 0;
+  virtual void GetElements(BaseFloat *params, const std::string content) const = 0;
   /// Average weights (including strides) with values in an array (GPU/CPU based, allocated beforehand)
-  virtual void AverageElements(const BaseFloat alpha, const BaseFloat *params, const BaseFloat beta) = 0;
+  virtual void AverageElements(const BaseFloat alpha, const BaseFloat *params, const BaseFloat beta, const std::string content) = 0;
+  /// Copy buffer to gradient and update
+  virtual void BufferUpdate(const BaseFloat *params, const std::string content) = 0;
 
   /// Compute gradient and update parameters
   virtual void Update(const CuMatrixBase<BaseFloat> &input,

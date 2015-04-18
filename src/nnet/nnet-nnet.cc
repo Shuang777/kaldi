@@ -41,6 +41,7 @@ Nnet::Nnet(const Nnet& other) {
   SetTrainOptions(other.opts_);
   send_buffer_ = NULL;
   receive_buffer_ = NULL;
+  reduce_content_ = other.GetReduceContent();
   Check(); 
 }
 
@@ -57,6 +58,7 @@ Nnet & Nnet::operator = (const Nnet& other) {
   SetTrainOptions(other.opts_); 
   send_buffer_ = NULL;
   receive_buffer_ = NULL;
+  reduce_content_ = other.GetReduceContent();
   Check();
   return *this;
 }
@@ -239,6 +241,12 @@ void Nnet::SetRefNnet(const Nnet& ref_nnet) {
   }
 }
 
+void Nnet::SetReduceContent(std::string content) {
+  KALDI_ASSERT(content == "model" || content == "momentum" || content == "all" );
+  KALDI_LOG << "reduce_content_ set to " << content;
+  reduce_content_ = content;
+}
+
 void Nnet::AppendComponent(Component* dynamically_allocated_comp) {
   // append,
   components_.push_back(dynamically_allocated_comp);
@@ -405,7 +413,7 @@ int32 Nnet::NumElements() const {
   int32 n_elements = 0;
   for(int32 n=0; n<components_.size(); n++) {
     if(components_[n]->IsUpdatable()) {
-      n_elements += dynamic_cast<UpdatableComponent*>(components_[n])->NumElements();
+      n_elements += dynamic_cast<UpdatableComponent*>(components_[n])->NumElements(reduce_content_);
     }
   }
   return n_elements;
@@ -424,9 +432,10 @@ void Nnet::SetDropoutRetention(BaseFloat r)  {
 }
 
 void Nnet::AllocBuffer() {
-  send_buffer_ = new BaseFloat[NumElements()];
-  receive_buffer_ = new BaseFloat[NumElements()];
-  cuda_receive_buffer_.Resize(NumElements());
+  int buffer_size = NumElements();
+  send_buffer_ = new BaseFloat[buffer_size];
+  receive_buffer_ = new BaseFloat[buffer_size];
+  cuda_receive_buffer_.Resize(buffer_size);
 }
 
 void Nnet::PrepSendBuffer() {
@@ -435,8 +444,8 @@ void Nnet::PrepSendBuffer() {
   for(int32 i=0; i<components_.size(); i++) {
     if(components_[i]->IsUpdatable()) {
       UpdatableComponent& c = dynamic_cast<UpdatableComponent&>(*components_[i]);
-      c.GetElements(&send_buffer_[pos]);
-      pos += c.NumElements();
+      c.GetElements(&send_buffer_[pos], reduce_content_);
+      pos += c.NumElements(reduce_content_);
     }
   }
   KALDI_ASSERT(pos == NumElements());
@@ -450,8 +459,21 @@ void Nnet::AverageReceiveBuffer() {
   for(int32 i=0; i<components_.size(); i++) {
     if(components_[i]->IsUpdatable()) {
       UpdatableComponent& c = dynamic_cast<UpdatableComponent&>(*components_[i]);
-      c.AverageElements(0.5, &cuda_receive_buffer_ptr[pos], 0.5);
-      pos += c.NumElements();
+      c.AverageElements(0.5, &cuda_receive_buffer_ptr[pos], 0.5, reduce_content_);
+      pos += c.NumElements(reduce_content_);
+    }
+  }
+  KALDI_ASSERT(pos == NumElements());
+}
+
+void Nnet::CopyBufferAndUpdate() {
+  int32 pos = 0;
+  // copy the elements
+  for(int32 i=0; i<components_.size(); i++) {
+    if(components_[i]->IsUpdatable()) {
+      UpdatableComponent& c = dynamic_cast<UpdatableComponent&>(*components_[i]);
+      c.BufferUpdate(&receive_buffer_[pos],reduce_content_);
+      pos += c.NumElements(reduce_content_);
     }
   }
   KALDI_ASSERT(pos == NumElements());
@@ -465,8 +487,8 @@ void Nnet::SetAndScaleBuffer(const BaseFloat scale) {
   for(int32 i=0; i<components_.size(); i++) {
     if(components_[i]->IsUpdatable()) {
       UpdatableComponent& c = dynamic_cast<UpdatableComponent&>(*components_[i]);
-      c.AverageElements(0.0, &cuda_receive_buffer_ptr[pos], scale);
-      pos += c.NumElements();
+      c.AverageElements(0.0, &cuda_receive_buffer_ptr[pos], scale, reduce_content_);
+      pos += c.NumElements(reduce_content_);
     }
   }
   KALDI_ASSERT(pos == NumElements());

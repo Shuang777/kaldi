@@ -75,14 +75,22 @@ class SentenceAveragingComponent : public UpdatableComponent {
 
   int32 NumParams() const { return nnet_.NumParams(); }
   
-  int32 NumElements() const { return nnet_.NumElements(); }
+  int32 NumElements(std::string content) const { 
+    KALDI_ERR << __func__ << "Not implemented!";
+    return 0;
+  }
+
   void GetParams(Vector<BaseFloat>* wei_copy) const { wei_copy->Resize(NumParams()); nnet_.GetParams(wei_copy); }
 
-  void GetElements(BaseFloat *v) const {
+  void GetElements(BaseFloat *v, const std::string content) const {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
-  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta, const std::string content) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
+  void BufferUpdate(const BaseFloat* v, const std::string content) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 

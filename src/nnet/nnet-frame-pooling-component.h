@@ -166,10 +166,9 @@ class FramePoolingComponent : public UpdatableComponent {
     return sum; 
   }
   
-  int32 NumElements() const { 
-    int32 sum = 0; 
-    for (int32 p=0; p<weight_.size(); p++) sum += weight_[p].Dim(); 
-    return sum; 
+  int32 NumElements(std::string content) const { 
+    KALDI_ERR << __func__ << "Not implemented!";
+    return 0;
   }
   
   void GetParams(Vector<BaseFloat>* wei_copy) const {
@@ -182,11 +181,15 @@ class FramePoolingComponent : public UpdatableComponent {
     KALDI_ASSERT(offset == wei_copy->Dim());
   }
 
-  void GetElements(BaseFloat *v) const {
+  void GetElements(BaseFloat *v, const std::string content) const {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
-  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta) {
+  void AverageElements(const BaseFloat alpha, const BaseFloat* v, const BaseFloat beta, const std::string content) {
+    KALDI_ERR << __func__ << "Not implemented!";
+  }
+
+  void BufferUpdate(const BaseFloat* v, const std::string content) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
   
