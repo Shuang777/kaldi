@@ -58,6 +58,9 @@ class Xent {
 
   double GetFrames() { return frames_; }
 
+  void Reset() {frames_ = 0; correct_ = 0; loss_ = 0.0; entropy_ = 0.0;
+                frames_progress_ = 0; loss_progress_ = 0.0; entropy_progress_ = 0.0;}
+
  private:
   int32 frames_;
   int32 correct_;
@@ -107,6 +110,8 @@ class Mse {
   double GetLoss() { return loss_; }
 
   double GetFrames() { return frames_; }
+
+  void Reset() { frames_ = 0; loss_ = 0.0; frames_progress_ = 0; loss_progress_ = 0;}
 
  private:
   int32 frames_;
