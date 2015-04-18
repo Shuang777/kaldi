@@ -59,6 +59,12 @@ semidata=
 semitransdir=
 # misc.
 verbose=1 # enable per-cache reports
+
+# mpi training
+mpi_jobs=0
+frames_per_reduce=
+reduce_type=
+
 # End configuration.
 
 echo "$0 $@"  # Print the command line for logging
@@ -68,8 +74,8 @@ echo "$0 $@"  # Print the command line for logging
 
 
 if [ $# != 2 ]; then
-   echo "Usage: $0 <data> <ali-dir> <exp-dir>"
-   echo " e.g.: $0 data/train exp/tri3_ali exp/rbm_pretrain"
+   echo "Usage: $0 <data> <exp-dir>"
+   echo " e.g.: $0 data/train exp/rbm_pretrain"
    echo "main options (for others, see top of script file)"
    echo "  --config <config-file>           # config containing options"
    echo ""
@@ -169,18 +175,39 @@ copy-feats "$feats" ark,scp:$tmpdir/feats.ark,$dir/train.scp
 #remove data on exit...
 trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
 
-feats="ark:copy-feats scp:$dir/train.scp ark- |"
+###### PREPARE FEATURE PIPELINE ######
+feats="ark:copy-feats scp:$dir/train.scp ark:- |"
+feats_tr="$feats"           # overwritten if in MPI mode
 echo "Substitute feats with $feats"
+
+# MPI feature preparation
+rbm_train_tool=rbm-train-cd1-frmshuff
+if [ "$mpi_jobs" != 0 ]; then
+  echo "MPI jobs = $mpi_jobs"
+  # filter the features
+  min_frames_tr=$(feat-to-len scp:$dir/train.scp ark,t:- | sort -k2 -n -r | myutils/distribute_scp.pl $mpi_jobs $dir/train_list)
+
+  for n in $(seq $mpi_jobs); do
+    cat $dir/train.scp | utils/filter_scp.pl $dir/train_list.$n.scp > $dir/train.$n.scp
+  done
+
+  reduce_per_iter_tr=$(echo "$min_frames_tr/$frames_per_reduce" | bc)
+
+  echo "reduce_per_iter_tr=$reduce_per_iter_tr"
+
+  feats_tr="ark:copy-feats scp:$dir/train.MPI_RANK.scp ark:- |"
+
+  rbm_train_tool="mpirun -n $mpi_jobs rbm-train-cd1-frmshuff-mpi"
+
+  mpirun="mpirun -n 1"
+fi
+
 
 #create a 10k utt subset for global cmvn estimates
 head -n 10000 $dir/train.scp > $dir/train.scp.10k
 
 # print the list size
 wc -l $dir/train.scp
-
-###### PREPARE FEATURE PIPELINE ######
-
-feats="ark:copy-feats scp:$dir/train.scp ark:- |"
 
 #get feature dim
 echo -n "Getting feature dim : "
@@ -230,7 +257,7 @@ else
   feature_transform_old=$feature_transform
   feature_transform=${feature_transform%.nnet}_cmvn-g.nnet
   echo "Renormalizing MLP input features into $feature_transform"
-  nnet-forward --use-gpu=yes \
+  $mpirun nnet-forward --use-gpu=yes \
     $feature_transform_old "$(echo $feats | sed 's|train.scp|train.scp.10k|')" \
     ark:- 2>$dir/log/cmvn_glob_fwd.log |\
   compute-cmvn-stats ark:- - | cmvn-to-nnet - - |\
@@ -270,22 +297,25 @@ for depth in $(seq 1 $nn_depth); do
     num_iter=$rbm_iter; [ $input_vis_type == "gauss" ] && num_iter=$((2*rbm_iter)) #2x more epochs for Gaussian input
     [ $input_vis_type == "bern" ] && rbm_lrate_low=$rbm_lrate # original lrate for Bernoulli input
     echo "Pretraining '$RBM' (input $input_vis_type, lrate $rbm_lrate_low, iters $num_iter)"
-    rbm-train-cd1-frmshuff --learn-rate=$rbm_lrate_low --l2-penalty=$rbm_l2penalty \
+    $rbm_train_tool --learn-rate=$rbm_lrate_low --l2-penalty=$rbm_l2penalty \
       --num-iters=$num_iter --verbose=$verbose \
       --feature-transform=$feature_transform \
+      ${reduce_per_iter_tr:+ --max-reduce-count=$reduce_per_iter_tr} \
+      ${reduce_type:+ --reduce-type=$reduce_type} \
+      ${frames_per_reduce:+ --frames-per-reduce=$frames_per_reduce} \
       $rbm_extra_opts \
-      $RBM.init "$feats" $RBM 2>$dir/log/rbm.$depth.log || exit 1
+      $RBM.init "$feats_tr" $RBM 2>$dir/log/rbm.$depth.log || exit 1
   else
     #This is Bernoulli-Bernoulli RBM
     #cmvn stats for init
     echo "Computing cmvn stats '$dir/$depth.cmvn' for RBM initialization"
     if [ ! -f $dir/$depth.cmvn ]; then 
-      nnet-forward --use-gpu=yes \
+      $mpirun nnet-forward --use-gpu=yes \
        "nnet-concat $feature_transform $dir/$((depth-1)).dbn - |" \
         "$(echo $feats | sed 's|train.scp|train.scp.10k|')" \
         ark:- 2>$dir/log/cmvn_fwd.$depth.log | \
       compute-cmvn-stats ark:- - 2>$dir/log/cmvn.$depth.log | \
-      cmvn-to-nnet - $dir/$depth.cmvn || exit 1
+      cmvn-to-nnet - $dir/$depth.cmvn
     else
       echo compute-cmvn-stats already done, skipping.
     fi
@@ -298,11 +328,14 @@ for depth in $(seq 1 $nn_depth); do
     nnet-initialize $RBM.proto $RBM.init 2>$dir/log/nnet-initialize.$depth.log || exit 1
     #pre-train
     echo "Pretraining '$RBM' (lrate $rbm_lrate, iters $rbm_iter)"
-    rbm-train-cd1-frmshuff --learn-rate=$rbm_lrate --l2-penalty=$rbm_l2penalty \
+    $rbm_train_tool --learn-rate=$rbm_lrate --l2-penalty=$rbm_l2penalty \
       --num-iters=$rbm_iter --verbose=$verbose \
       --feature-transform="nnet-concat $feature_transform $dir/$((depth-1)).dbn - |" \
+      ${reduce_per_iter_tr:+ --max-reduce-count=$reduce_per_iter_tr} \
+      ${reduce_type:+ --reduce-type=$reduce_type} \
+      ${frames_per_reduce:+ --frames-per-reduce=$frames_per_reduce} \
       $rbm_extra_opts \
-      $RBM.init "$feats" $RBM 2>$dir/log/rbm.$depth.log || exit 1
+      $RBM.init "$feats_tr" $RBM 2>$dir/log/rbm.$depth.log || exit 1
   fi
 
   #Create DBN stack
