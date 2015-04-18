@@ -24,42 +24,12 @@
 #include "util/common-utils.h"
 #include "base/timer.h"
 #include "cudamatrix/cu-device.h"
+#include "nnet/nnet-mixing.h"
 
-
-using namespace kaldi;
-using namespace kaldi::nnet1;
-
-/// Butterfly mixing
-int get_butterfly_friend_id(int mpi_rank, int mpi_jobs, int round_i) {
-  int rounds = round(log2(mpi_jobs));
-  return mpi_rank ^ (1 << (round_i % rounds));
-}
-
-bool is_power_of_two(int x) {
-  return ((x != 0) && !(x & (x-1)));
-}
-
-void share_and_average(Nnet &nnet, const int rank_id, const int send_to_id, const int receive_from_id) {
-  KALDI_ASSERT(rank_id != send_to_id && rank_id != receive_from_id);
-
-  nnet.PrepSendBuffer();
-  
-  int num_elements = nnet.NumElements();
-  
-  MPI_Sendrecv(nnet.GetSendBuffer(), num_elements, MPI_FLOAT, send_to_id, 0, nnet.GetReceiveBuffer(), num_elements, MPI_FLOAT, receive_from_id, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-  nnet.AverageReceiveBuffer();
-}
-
-void all_reduce_average(Nnet &nnet, const int mpi_jobs) {
-  int num_elements = nnet.NumElements();
-  nnet.PrepSendBuffer();
-  MPI_Allreduce(nnet.GetSendBuffer(), nnet.GetReceiveBuffer(), num_elements, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
-  float scale = 1.0/mpi_jobs;
-  nnet.SetAndScaleBuffer(scale);
-}
 
 int main(int argc, char *argv[]) {
+  using namespace kaldi;
+  using namespace kaldi::nnet1;
   typedef kaldi::int32 int32;  
   
   try {
@@ -89,6 +59,10 @@ int main(int argc, char *argv[]) {
     std::string objective_function = "xent";
     po.Register("objective-function", &objective_function, "Objective function : xent|mse");
 
+    int32 num_iters = 1; 
+    po.Register("num-iters", &num_iters, 
+                "Number of iterations (smaller datasets should have more iterations).");
+
     int32 length_tolerance = 5;
     po.Register("length-tolerance", &length_tolerance, "Allowed length difference of features/targets (frames)");
 
@@ -107,18 +81,21 @@ int main(int argc, char *argv[]) {
     std::string ref_model_filename="None";
     po.Register("ref-nnet", &ref_model_filename, "Reference nnet for regularization (default None)");
 
-    int32 frames_per_reduce = 10000;
-    po.Register("frames-per-reduce", &frames_per_reduce, "Number of frames per average operation on MPI (default = 10000)");
-    
-    int32 max_reduce_count = INT_MAX;
-    po.Register("max-reduce-count", &max_reduce_count, "Maximum number of average operation. (default = 10000)");
-    
     double dropout_retention = 0.0;
     po.Register("dropout-retention", &dropout_retention, "number between 0..1, saying how many neurons to preserve (0.0 will keep original value");
 
     std::string reduce_type = "butterfly";
     po.Register("reduce-type", &reduce_type, "Reduce strategy for MPI jobs (butterfly|allreduce|ring|hoppingring, default = butterfly)");
      
+    int32 frames_per_reduce = 10000;
+    po.Register("frames-per-reduce", &frames_per_reduce, "Number of frames per average operation on MPI (default = 10000)");
+    
+    int32 max_reduce_count = INT_MAX;
+    po.Register("max-reduce-count", &max_reduce_count, "Maximum number of average operation. (default = INT_MAX)");
+
+    std::string reduce_content = "model";
+    po.Register("reduce-content", &reduce_content, "Reduce model, gradient, momentum or all (including model and momentum) (default = model)");
+    
     
     po.Read(argc, argv);
 
@@ -158,10 +135,6 @@ int main(int argc, char *argv[]) {
       target_model_filename = po.GetArg(4);
     }
 
-    using namespace kaldi;
-    using namespace kaldi::nnet1;
-    typedef kaldi::int32 int32;
-
     //Select the GPU
 #if HAVE_CUDA==1
     CuDevice::Instantiate().SelectGpuId(use_gpu);
@@ -176,6 +149,7 @@ int main(int argc, char *argv[]) {
     Nnet nnet;
     nnet.Read(model_filename);
     nnet.SetTrainOptions(trn_opts);
+    nnet.SetReduceContent(reduce_content);
     if (updatable_layers != "") {
       std::vector<bool> updatable;
       SplitStringToBoolVector(updatable_layers, ":", updatable);
@@ -226,8 +200,11 @@ int main(int argc, char *argv[]) {
     int32 reduce_count = 0;
     int32 reduce_shift = 1;
 
-    if (mpi_rank == 0)
+    int32 iter = 1;
+    if (mpi_rank == 0) {
       KALDI_LOG << (crossvalidate?"CROSS-VALIDATION":"TRAINING") << " STARTED";
+      KALDI_LOG << "Iteration " << iter << "/" << num_iters;
+    }
 
     int32 num_done = 0, num_no_tgt_mat = 0, num_other_error = 0;
     while (!feature_reader.Done() && reduce_count < max_reduce_count) {
@@ -316,6 +293,26 @@ int main(int argc, char *argv[]) {
       for ( ; !feature_randomizer.Done() && reduce_count < max_reduce_count; feature_randomizer.Next(),
                                           targets_randomizer.Next(),
                                           weights_randomizer.Next()) {
+        if (reduce_content == "gradient") {
+          const bool average_model = false;     // we don't average model in this setting
+          nnet.PrepSendBuffer();
+          if (reduce_type == "butterfly") {
+            int32 friend_id = get_butterfly_friend_id(mpi_rank, mpi_jobs, reduce_count);
+            share_nnet_buffer(nnet, mpi_rank, friend_id, friend_id, average_model);
+          } else if (reduce_type == "allreduce") {
+            all_reduce_nnet_buffer(nnet, mpi_jobs, average_model);
+          } else if (reduce_type == "ring") {
+            share_nnet_buffer(nnet, mpi_rank, (mpi_rank + 1) % mpi_jobs, (mpi_rank + mpi_jobs - 1) % mpi_jobs, average_model);
+          } else if (reduce_type == "hoppingring") {
+            share_nnet_buffer(nnet, mpi_rank, (mpi_rank + reduce_shift) % mpi_jobs, (mpi_rank + mpi_jobs - reduce_shift) % mpi_jobs, average_model);
+          }
+          reduce_shift = (reduce_shift + 1) % mpi_jobs;
+          if (reduce_shift == 0) {    // avoid averaging with itself
+            reduce_shift = 1;
+          }
+          reduce_count++;
+        }
+
         // get block of feature/target pairs
         const CuMatrixBase<BaseFloat>& nnet_in = feature_randomizer.Value();
         const Posterior& nnet_tgt = targets_randomizer.Value();
@@ -350,6 +347,10 @@ int main(int argc, char *argv[]) {
           }
         }
 
+        if (reduce_content == "gradient") {
+          nnet.CopyBufferAndUpdate();
+        }
+
         // 1st minibatch : show what happens in network 
         if (kaldi::g_kaldi_verbose_level >= 1 && total_frames == 0 && mpi_rank == 0) { // vlog-1
           KALDI_VLOG(1) << "### After " << total_frames << " frames,";
@@ -379,15 +380,16 @@ int main(int argc, char *argv[]) {
           if (mpi_rank == 0)
             KALDI_LOG << "### MPI " << reduce_type << " reducing after " << total_frames+nnet_in.NumRows() << " frames.";
           
+          nnet.PrepSendBuffer();
           if (reduce_type == "butterfly") {
             int32 friend_id = get_butterfly_friend_id(mpi_rank, mpi_jobs, reduce_count);
-            share_and_average(nnet, mpi_rank, friend_id, friend_id);
+            share_nnet_buffer(nnet, mpi_rank, friend_id, friend_id);
           } else if (reduce_type == "allreduce") {
-            all_reduce_average(nnet, mpi_jobs);
+            all_reduce_nnet_buffer(nnet, mpi_jobs);
           } else if (reduce_type == "ring") {
-            share_and_average(nnet, mpi_rank, (mpi_rank + 1) % mpi_jobs, (mpi_rank + mpi_jobs - 1) % mpi_jobs);
+            share_nnet_buffer(nnet, mpi_rank, (mpi_rank + 1) % mpi_jobs, (mpi_rank + mpi_jobs - 1) % mpi_jobs);
           } else if (reduce_type == "hoppingring") {
-            share_and_average(nnet, mpi_rank, (mpi_rank + reduce_shift) % mpi_jobs, (mpi_rank + mpi_jobs - reduce_shift) % mpi_jobs);
+            share_nnet_buffer(nnet, mpi_rank, (mpi_rank + reduce_shift) % mpi_jobs, (mpi_rank + mpi_jobs - reduce_shift) % mpi_jobs);
           }
           reduce_shift = (reduce_shift + 1) % mpi_jobs;
           if (reduce_shift == 0) {    // avoid averaging with itself
@@ -398,6 +400,16 @@ int main(int argc, char *argv[]) {
         }
         
         total_frames += nnet_in.NumRows();
+      }
+      
+      // reopen the feature stream if we will run another iteration
+      if ((reduce_content == "model" || reduce_content == "all") && (feature_reader.Done() || reduce_count >= max_reduce_count) && (iter < num_iters)) {
+        iter++;
+        reduce_count = 0;
+        if (mpi_rank == 0)
+          KALDI_LOG << "Iteration " << iter << "/" << num_iters;
+        feature_reader.Close();
+        feature_reader.Open(feature_rspecifier);
       }
     }
 
