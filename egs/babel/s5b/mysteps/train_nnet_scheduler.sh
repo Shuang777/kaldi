@@ -25,6 +25,7 @@ feature_transform_list=
 # learn rate scheduling
 max_iters=20
 min_iters=
+lr_schedule=halve     # halve, fixed
 #start_halving_inc=0.5
 #end_halving_inc=0.1
 start_halving_impr=0.01
@@ -38,10 +39,11 @@ train_tool="nnet-train-frmshuff"
 frame_weights=
 subnnet_ids=
 semi_layers=-1
-updatable_layers=""
+updatable_layers=
 frames_per_reduce=
 reduce_per_iter_tr=
 reduce_type=
+reduce_content=
 
 # End configuration.
 
@@ -97,26 +99,34 @@ loss=$(cat $dir/log/iter00.initial.log | grep "AvgLoss:" | tail -n 1 | awk '{ pr
 loss_type=$(cat $dir/log/iter00.initial.log | grep "AvgLoss:" | tail -n 1 | awk '{ print $5; }')
 echo "CROSSVAL PRERUN AVG.LOSS $(printf "%.4f" $loss) $loss_type"
 
-# resume lr-halving
-halving=0
-[ -e $dir/.halving ] && halving=$(cat $dir/.halving)
+if [ $lr_schedule == 'halve' ]; then
+  # resume lr-halving
+  halving=0
+  [ -e $dir/.halving ] && halving=$(cat $dir/.halving)
+  nnet_learn_rate=$learn_rate
+fi
+
 # training
 for iter in $(seq -w $max_iters); do
   echo -n "ITERATION $iter: "
   mlp_next=$dir/nnet/${mlp_base}_iter${iter}
+
+  if [ $lr_schedule == 'fixed' ]; then
+    nnet_learn_rate=$(echo $learn_rate | tr ':' ' ' | awk -v i=$iter '{if(i < NF) print $i; else print $NF}')
+  fi
   
   # skip iteration if already done
-  [ -e $dir/.done_iter$iter ] && echo -n "skipping... " && ls $mlp_next* && continue 
-  
+  [ -e $dir/.done_iter$iter ] && echo -n "skipping... " && ls $mlp_next* && continue
   # training
   [ ! -z "$frame_weights" ] && frame_weights_opt="--frame-weights=ark:$frame_weights"
   $train_tool \
-   --learn-rate=$learn_rate --momentum=$momentum --l1-penalty=$l1_penalty --l2-penalty=$l2_penalty \
+   --learn-rate=$nnet_learn_rate --momentum=$momentum --l1-penalty=$l1_penalty --l2-penalty=$l2_penalty \
    --minibatch-size=$minibatch_size --randomizer-size=$randomizer_size --randomize=true --verbose=$verbose \
    --binary=true --semi-layers=$semi_layers $frame_weights_opt \
    ${updatable_layers:+ --updatable-layers=$updatable_layers} \
    ${reduce_per_iter_tr:+ --max-reduce-count=$reduce_per_iter_tr} \
    ${reduce_type:+ --reduce-type=$reduce_type} \
+   ${reduce_content:+ --reduce-content=$reduce_content} \
    ${frames_per_reduce:+ --frames-per-reduce=$frames_per_reduce} \
    ${feature_transform:+ --feature-transform=$feature_transform} \
    ${feature_transform_list:+ --feature-transform-list=$feature_transform_list} \
@@ -125,7 +135,7 @@ for iter in $(seq -w $max_iters); do
    2> $dir/log/iter${iter}.tr.log || exit 1; 
 
   tr_loss=$(cat $dir/log/iter${iter}.tr.log | grep "AvgLoss:" | tail -n 1 | awk '{ print $4; }')
-  echo -n "TRAIN AVG.LOSS $(printf "%.4f" $tr_loss), (lrate$(printf "%.6g" $learn_rate)), "
+  echo -n "TRAIN AVG.LOSS $(printf "%.4f" $tr_loss), (lrate$(printf "%.6g" $nnet_learn_rate)), "
   
   # cross-validation
   $train_tool --cross-validate=true \
@@ -134,20 +144,20 @@ for iter in $(seq -w $max_iters); do
    ${feature_transform_list:+ --feature-transform-list=$feature_transform_list} \
    "$feats_cv" "$labels_cv" $subnnet_ids_arg $mlp_next \
    2>$dir/log/iter${iter}.cv.log || exit 1;
-  
+
   loss_new=$(cat $dir/log/iter${iter}.cv.log | grep "AvgLoss:" | tail -n 1 | awk '{ print $4; }')
   echo -n "CROSSVAL AVG.LOSS $(printf "%.4f" $loss_new), "
 
   # accept or reject new parameters (based on objective function)
   loss_prev=$loss
-  if [ "1" == "$(awk "BEGIN{print($loss_new<$loss);}")" ]; then
+  if [ "1" == "$(awk "BEGIN{print($loss_new<$loss);}")" ] || [ $lr_schedule == "fixed" ]; then
     loss=$loss_new
-    mlp_best=$dir/nnet/${mlp_base}_iter${iter}_learnrate${learn_rate}_tr$(printf "%.4f" $tr_loss)_cv$(printf "%.4f" $loss_new)
+    mlp_best=$dir/nnet/${mlp_base}_iter${iter}_learnrate${nnet_learn_rate}_tr$(printf "%.4f" $tr_loss)_cv$(printf "%.4f" $loss_new)
     mv $mlp_next $mlp_best
     echo "nnet accepted ($(basename $mlp_best))"
     echo $mlp_best > $dir/.mlp_best 
   else
-    mlp_reject=$dir/nnet/${mlp_base}_iter${iter}_learnrate${learn_rate}_tr$(printf "%.4f" $tr_loss)_cv$(printf "%.4f" $loss_new)_rejected
+    mlp_reject=$dir/nnet/${mlp_base}_iter${iter}_learnrate${nnet_learn_rate}_tr$(printf "%.4f" $tr_loss)_cv$(printf "%.4f" $loss_new)_rejected
     mv $mlp_next $mlp_reject
     echo "nnet rejected ($(basename $mlp_reject))"
   fi
@@ -155,31 +165,33 @@ for iter in $(seq -w $max_iters); do
   # create .done file as a mark that iteration is over
   touch $dir/.done_iter$iter
 
-  # stopping criterion
-  if [[ "1" == "$halving" && "1" == "$(awk "BEGIN{print(($loss_prev-$loss)/$loss_prev < $end_halving_impr)}")" ]]; then
-    if [[ "$min_iters" != "" ]]; then
-      if [ $min_iters -gt $iter ]; then
-        echo we were supposed to finish, but we continue, min_iters : $min_iters
-        continue
+  if [ $lr_schedule == 'halve' ]; then
+    # stopping criterion
+    if [[ "1" == "$halving" && "1" == "$(awk "BEGIN{print(($loss_prev-$loss)/$loss_prev < $end_halving_impr)}")" ]]; then
+      if [[ "$min_iters" != "" ]]; then
+        if [ $min_iters -gt $iter ]; then
+          echo we were supposed to finish, but we continue, min_iters : $min_iters
+          continue
+        fi
       fi
+      echo finished, too small rel. improvement $(awk "BEGIN{print(($loss_prev-$loss)/$loss_prev)}")
+      break
     fi
-    echo finished, too small rel. improvement $(awk "BEGIN{print(($loss_prev-$loss)/$loss_prev)}")
-    break
-  fi
 
-  # start annealing when improvement is low
-  if [ "1" == "$(awk "BEGIN{print(($loss_prev-$loss)/$loss_prev < $start_halving_impr)}")" ]; then
-    halving=1
-    echo $halving >$dir/.halving
-  fi
-  
-  # do annealing
-  if [ "1" == "$halving" ]; then
-    learn_rate=$(awk "BEGIN{print($learn_rate*$halving_factor)}")
-    echo $learn_rate >$dir/.learn_rate
-    if [ $resume_anneal == true ]; then
-      halving=0
+    # start annealing when improvement is low
+    if [ "1" == "$(awk "BEGIN{print(($loss_prev-$loss)/$loss_prev < $start_halving_impr)}")" ]; then
+      halving=1
       echo $halving >$dir/.halving
+    fi
+    
+    # do annealing
+    if [ "1" == "$halving" ]; then
+      nnet_learn_rate=$(awk "BEGIN{print($nnet_learn_rate*$halving_factor)}")
+      echo $nnet_learn_rate >$dir/.learn_rate
+      if [ $resume_anneal == true ]; then
+        halving=0
+        echo $halving >$dir/.halving
+      fi
     fi
   fi
 done

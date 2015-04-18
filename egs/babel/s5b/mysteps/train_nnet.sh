@@ -52,7 +52,7 @@ use_gpu_id= # manually select GPU id to run on, (-1 disables GPU)
 seed=777    # seed value used for training data shuffling and initialization
 cv_subset_factor=0.1
 uttbase=true    # by default, we choose last 10% utterances for CV
-resume_anneal=true
+resume_anneal=false
 
 transdir=
 
@@ -64,7 +64,13 @@ semitransdir=
 semi_layers=-1
 semi_cv=false   # also use semi data for cross-validation
 max_iters=20
-updatable_layers=""
+updatable_layers=
+
+# mpi training
+mpi_jobs=0
+frames_per_reduce=
+reduce_type=
+reduce_content=
 
 # End configuration.
 
@@ -227,7 +233,7 @@ tmpdir=$dir/feature_shuffled; mkdir -p $tmpdir;
 copy-feats "$feats_tr" ark,scp:$tmpdir/feats.tr.ark,$dir/train.scp
 copy-feats "$feats_cv" ark,scp:$tmpdir/feats.cv.ark,$dir/cv.scp
 # remove data on exit...
-trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
+#trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
 
 #create a 10k utt subset for global cmvn estimates
 head -n 10000 $dir/train.scp > $dir/train.scp.10k
@@ -236,9 +242,33 @@ head -n 10000 $dir/train.scp > $dir/train.scp.10k
 wc -l $dir/train.scp $dir/cv.scp
 
 ###### PREPARE FEATURE PIPELINE ######
-# read the features
-feats_tr="ark:copy-feats scp:$dir/train.scp ark:- |"
-feats_cv="ark:copy-feats scp:$dir/cv.scp ark:- |"
+# filter the features
+copy-int-vector "ark:gunzip -c $alidir/ali.*.gz |" ark,t:$dir/ali.txt
+cat $dir/train.scp | utils/filter_scp.pl $dir/ali.txt > $dir/train.filtered.scp
+cat $dir/cv.scp | utils/filter_scp.pl $dir/ali.txt > $dir/cv.filtered.scp
+
+if [ "$mpi_jobs" != 0 ]; then
+  min_frames_tr=$(feat-to-len scp:$dir/train.filtered.scp ark,t:- | sort -k2 -n -r | myutils/distribute_scp.pl $mpi_jobs $dir/train_list)
+  min_frames_cv=$(feat-to-len scp:$dir/cv.filtered.scp ark,t:- | sort -k2 -n -r | myutils/distribute_scp.pl $mpi_jobs $dir/cv_list)
+
+  for n in $(seq $mpi_jobs); do
+    cat $dir/train.filtered.scp | utils/filter_scp.pl $dir/train_list.$n.scp > $dir/train.$n.scp
+    cat $dir/cv.filtered.scp | utils/filter_scp.pl $dir/cv_list.$n.scp > $dir/cv.$n.scp
+  done
+
+  reduce_per_iter_tr=$(echo $min_frames_tr/$frames_per_reduce | bc)
+
+  echo "reduce_per_iter_tr=$reduce_per_iter_tr"
+
+  feats_tr_mpi="ark:copy-feats scp:$dir/train.MPI_RANK.scp ark:- |"
+  feats_cv_mpi="ark:copy-feats scp:$dir/cv.MPI_RANK.scp ark:- |"
+
+  train_tool="mpirun -n $mpi_jobs nnet-train-frmshuff-mpi"
+  mpirun="mpirun -n 1"
+fi
+
+feats_tr="ark:copy-feats scp:$dir/train.filtered.scp ark:- |"
+feats_cv="ark:copy-feats scp:$dir/cv.filtered.scp ark:- |"
 echo substituting feats_tr with $feats_tr
 echo substituting feats_cv with $feats_cv
 
@@ -310,7 +340,7 @@ else
   feature_transform_old=$feature_transform
   feature_transform=${feature_transform%.nnet}_cmvn-g.nnet
   echo "Renormalizing MLP input features into $feature_transform"
-  nnet-forward --use-gpu=yes \
+  $mpi_run nnet-forward --use-gpu=yes \
     $feature_transform_old "$(echo $feats_tr | sed 's|train.scp|train.scp.10k|')" \
     ark:- 2>$dir/log/nnet-forward-cmvn.log |\
   compute-cmvn-stats ark:- - | cmvn-to-nnet - - |\
@@ -362,6 +392,11 @@ fi
 
 
 ###### TRAIN ######
+if [ $mpi_jobs != 0 ]; then
+  feats_tr="$feats_tr_mpi"
+  feats_cv="$feats_cv_mpi"
+fi
+
 echo
 echo "# RUNNING THE NN-TRAINING SCHEDULER"
 mysteps/train_nnet_scheduler.sh \
@@ -371,7 +406,11 @@ mysteps/train_nnet_scheduler.sh \
   --resume-anneal $resume_anneal \
   --semi-layers $semi_layers \
   --max-iters $max_iters \
-  --updatable-layers "$updatable_layers" \
+  ${updatable_layers:+ --updatable-layers $updatable_layers} \
+  ${frames_per_reduce:+ --frames-per-reduce $frames_per_reduce} \
+  ${reduce_per_iter_tr:+ --reduce-per-iter-tr $reduce_per_iter_tr} \
+  ${reduce_type:+ --reduce-type $reduce_type} \
+  ${reduce_content:+ --reduce-content $reduce_content} \
   ${train_opts} \
   ${train_tool:+ --train-tool "$train_tool"} \
   ${config:+ --config $config} \
