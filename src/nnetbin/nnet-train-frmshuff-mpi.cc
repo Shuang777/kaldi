@@ -293,7 +293,10 @@ int main(int argc, char *argv[]) {
       for ( ; !feature_randomizer.Done() && reduce_count < max_reduce_count; feature_randomizer.Next(),
                                           targets_randomizer.Next(),
                                           weights_randomizer.Next()) {
-        if (reduce_content == "gradient") {
+        
+        if (!crossvalidate && reduce_content == "gradient" && total_frames/frames_per_reduce != ((total_frames+rnd_opts.minibatch_size)/frames_per_reduce)) {
+          if (mpi_rank == 0)
+            KALDI_LOG << "### MPI " << reduce_type << " reducing after " << total_frames<< " frames.";
           const bool average_model = false;     // we don't average model in this setting
           nnet.PrepSendBuffer();
           if (reduce_type == "butterfly") {
@@ -345,11 +348,7 @@ int main(int argc, char *argv[]) {
               nnet.Backpropagate(obj_diff, NULL, CuVector<BaseFloat>(frm_weights), semi_layers);
             }
           }
-        }
-
-        if (reduce_content == "gradient") {
-          nnet.CopyBufferAndUpdate();
-        }
+       }
 
         // 1st minibatch : show what happens in network 
         if (kaldi::g_kaldi_verbose_level >= 1 && total_frames == 0 && mpi_rank == 0) { // vlog-1
@@ -366,7 +365,7 @@ int main(int argc, char *argv[]) {
         
         // monitor the NN training
         if (kaldi::g_kaldi_verbose_level >= 2) { // vlog-2
-          if ((total_frames/25000) != ((total_frames+nnet_in.NumRows())/25000) && mpi_rank == 0) { // print every 25k frames
+          if ((total_frames/10000) != ((total_frames+nnet_in.NumRows())/10000) && mpi_rank == 0) { // print every 10k frames
             KALDI_VLOG(2) << "### After " << total_frames << " frames,";
             KALDI_VLOG(2) << nnet.InfoPropagate();
             if (!crossvalidate) {
@@ -375,7 +374,11 @@ int main(int argc, char *argv[]) {
           }
         }
 
-        if (!crossvalidate && total_frames/frames_per_reduce != ((total_frames+nnet_in.NumRows())/frames_per_reduce)) { // reduce every frames_per_reduce frames
+        if (!crossvalidate && reduce_content == "gradient" && total_frames/frames_per_reduce != ((total_frames+nnet_in.NumRows())/frames_per_reduce)) {
+          nnet.CopyBufferAndUpdate();
+        }
+
+        if (!crossvalidate && reduce_content != "gradient" && total_frames/frames_per_reduce != ((total_frames+nnet_in.NumRows())/frames_per_reduce)) { // reduce every frames_per_reduce frames
           mpi_timer.Reset();
           if (mpi_rank == 0)
             KALDI_LOG << "### MPI " << reduce_type << " reducing after " << total_frames+nnet_in.NumRows() << " frames.";
@@ -403,7 +406,7 @@ int main(int argc, char *argv[]) {
       }
       
       // reopen the feature stream if we will run another iteration
-      if ((reduce_content == "model" || reduce_content == "all") && (feature_reader.Done() || reduce_count >= max_reduce_count) && (iter < num_iters)) {
+      if ((feature_reader.Done() || reduce_count >= max_reduce_count) && (iter < num_iters)) {
         iter++;
         reduce_count = 0;
         if (mpi_rank == 0)

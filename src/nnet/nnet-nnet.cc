@@ -242,7 +242,7 @@ void Nnet::SetRefNnet(const Nnet& ref_nnet) {
 }
 
 void Nnet::SetReduceContent(std::string content) {
-  KALDI_ASSERT(content == "model" || content == "momentum" || content == "all" );
+  KALDI_ASSERT(content == "gradient" || content == "model" || content == "momentum" || content == "all" );
   KALDI_LOG << "reduce_content_ set to " << content;
   reduce_content_ = content;
 }
