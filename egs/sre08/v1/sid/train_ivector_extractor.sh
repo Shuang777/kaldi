@@ -48,6 +48,7 @@ add_delta=true
 lambda=1.0
 subsample=1
 search_lambda=false
+cv_share=5
 compute_auxf=true
 # End configuration section.
 
@@ -141,13 +142,13 @@ while [ $x -lt $num_iters ]; do
   if [ $stage -le $x ]; then
     [ -f $dir/.error ] && rm $dir/.error 2>/dev/null
 
-    if [ $search_lambda == true ]; then
+    if [ $search_lambda == true ] && [ $x -gt 0 ] ; then
       if [ -f $dir/.done.search.$x ]; then
         echo "lambda search done for iteration $x"
         cat $dir/log/search.$x.log
       else 
         echo "Start searching for lambda"
-        myutils/search.pl "$cmd $parallel_opts JOB=1:$nj $dir/log/lambda_cv.$x.cv#0.JOB.log ivector-extractor-cross-validation --lambda=#0 --num-threads=4 --num-samples-for-weights=3 $dir/$x.ie \"$feats\" \"ark,s,cs:gunzip -c $dir/post.JOB.gz|\" &> $dir/log/lambda_cv.$x.err.log && grep Average $dir/log/lambda_cv.$x.cv#0.[0-9]*.log | awk '{a+=exp(\$NF)} END{printf \"%f\",a}'" | tee $dir/log/search.$x.log
+        myutils/search.pl "$cmd $parallel_opts JOB=1:$nj $dir/log/lambda_cv.$x.cv#0.JOB.log ivector-extractor-cross-validation --cv-share=$cv_share --lambda=#0 --num-threads=4 --num-samples-for-weights=3 $dir/$x.ie \"$feats\" \"ark,s,cs:gunzip -c $dir/post.JOB.gz|\" &> $dir/log/lambda_cv.$x.err.log && grep 'Log residue' $dir/log/lambda_cv.$x.cv#0.[0-9]*.log | awk 'BEGIN{a=0} {a+=exp(\$6)} END{printf \"%f\",a}'" | tee $dir/log/search.$x.log
         touch $dir/.done.search.$x
       fi
 

@@ -82,6 +82,8 @@ class IvectorExtractorUtteranceStats {
 
   void Clear();
 
+  void Print(FILE *f);
+
  protected:
   friend class IvectorExtractor;
   friend class IvectorExtractorStats;
@@ -96,14 +98,16 @@ struct IvectorExtractorOptions {
   int ivector_dim;
   int num_iters;
   bool use_weights;
+  bool use_bias;
   IvectorExtractorOptions(): ivector_dim(400), num_iters(2),
-                             use_weights(true) { }
+                             use_weights(true) use_bias(false) { }
   void Register(OptionsItf *po) {
     po->Register("num-iters", &num_iters, "Number of iterations in "
                  "iVector estimation (>1 needed due to weights)");
     po->Register("ivector-dim", &ivector_dim, "Dimension of iVector");
     po->Register("use-weights", &use_weights, "If true, regress the "
                  "log-weights on the iVector");
+    po->Register("use-bias", &use_bias, "Bias of speaker mean");
   }
 };
 
@@ -276,6 +280,9 @@ class IvectorExtractor {
   /// There is no mean offset to add-- we deal with it by having
   /// a prior with a nonzero mean.
   std::vector<Matrix<double> > M_; 
+
+  /// mean of speaker-adapted model, dimension is [I][D]
+  Matrix<double> mu;
 
   /// Inverse variances of speaker-adapted model, dimension [I][D][D].
   std::vector<SpMatrix<double> > Sigma_inv_;
@@ -652,17 +659,34 @@ class IvectorExtractorCVStats {
  public:
   friend class IvectorExtractor;
 
-  IvectorExtractorCVStats(): log_tot_residue_(kLogZeroDouble), lambda_(1.0), cv_share_(5) {}
+  IvectorExtractorCVStats(): log_tot_residue_(kLogZeroDouble), tot_auxf_per_frame_(0.0), tot_residue_(0.0), log_tot_avg_residue_(kLogZeroDouble), tot_avg_residue_(0.0), lambda_(1.0), cv_share_(5) {}
   
   IvectorExtractorCVStats(double lambda, int32 cv_share): log_tot_residue_(kLogZeroDouble), 
-                                                        lambda_(lambda),
-                                                        cv_share_(cv_share) { }
+                                                          tot_auxf_per_frame_(0.0),
+                                                          tot_residue_(0.0),
+                                                          log_tot_avg_residue_(kLogZeroDouble),
+                                                          tot_avg_residue_(0.0),
+                                                          lambda_(lambda),
+                                                          cv_share_(cv_share) { }
   
+  void AccCVStatsForUtterance(const IvectorExtractor &extractor,
+                              const Matrix<BaseFloat> &feats,
+                              const Posterior &post,
+                              const int32 randomize_seed);
+
   void AccStatsForUtterance(const IvectorExtractor &extractor,
                             const Matrix<BaseFloat> &feats,
                             const Posterior &post);
 
-  double AvgLogResidue() { return log_tot_residue_ / cv_share_; }
+  double LogResidue() { return log_tot_residue_; }
+
+  double Residue() {return tot_residue_; }
+
+  double LogAvgResidue() { return log_tot_avg_residue_; }
+
+  double AvgResidue() { return tot_avg_residue_; }
+
+  double TotalAuxfPerFrame() { return tot_auxf_per_frame_; }
 
  protected:
   friend class IvectorExtractorUpdateProjectionClass;
@@ -671,6 +695,14 @@ class IvectorExtractorCVStats {
   /// Total auxiliary function over the training data-- can be
   /// used to check convergence, etc.
   double log_tot_residue_;
+
+  double tot_auxf_per_frame_;
+
+  double tot_residue_;
+
+  double log_tot_avg_residue_;
+
+  double tot_avg_residue_;
 
   double lambda_;
 

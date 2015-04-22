@@ -38,6 +38,7 @@ struct NnetDataRandomizerOptions {
   { }
 
   void SetMinibatchSize(int32 size) { minibatch_size = size;}
+  void SetSeed(int32 seed) { randomizer_seed = seed;}
 
   void Register(OptionsItf *po) {
     po->Register("randomizer-size", &randomizer_size, "Capacity of randomizer, length of concatenated utterances which are used for frame-level shuffling (in frames, affects memory consumption, max 8000000).");

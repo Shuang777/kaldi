@@ -380,6 +380,7 @@
 /src/ivectorbin/randomize-int-vector
 /src/ivectorbin/randomize-matrix
 /src/ivectorbin/ivector-check-condition-number
+/src/ivectorbin/ivector-extractor-validation
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk

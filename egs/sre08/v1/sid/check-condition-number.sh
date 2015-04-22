@@ -20,6 +20,7 @@ posterior_scale=1.0 # This scale helps to control for successve features being h
 vad=true
 add_delta=true
 lambda=1.0
+ie=final.ie
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -36,7 +37,6 @@ if [ $# != 3 ]; then
   echo "  --cmd (utils/run.pl|utils/queue.pl <queue opts>) # how to run jobs."
   echo "  --num-iters <#iters|10>                          # Number of iterations of E-M"
   echo "  --nj <n|10>                                      # Number of jobs (also see num-processes and num-threads)"
-  echo "  --num-threads <n|8>                              # Number of threads for each process"
   echo "  --stage <stage|0>                                # To control partial reruns"
   echo "  --num-gselect <n|20>                             # Number of Gaussians to select using"
   echo "                                                   # diagonal model."
@@ -48,7 +48,7 @@ srcdir=$1
 data=$2
 dir=$3
 
-for f in $srcdir/final.ie $srcdir/final.ubm $data/feats.scp ; do
+for f in $srcdir/$ie $srcdir/final.ubm $data/feats.scp ; do
   [ ! -f $f ] && echo "No such file $f" && exit 1;
 done
 
@@ -77,7 +77,7 @@ if [ $stage -le 0 ]; then
     gmm-gselect --n=$num_gselect "$dubm" "$feats" ark:- \| \
     fgmm-global-gselect-to-post --min-post=$min_post $srcdir/final.ubm "$feats" \
        ark,s,cs:- ark:- \| scale-post ark:- $posterior_scale ark:- \| \
-    ivector-check-condition-number --lambda=$lambda $srcdir/final.ie "$feats" ark,s,cs:-
+    ivector-check-condition-number --lambda=$lambda $srcdir/$ie "$feats" ark,s,cs:-
 fi
 
 }

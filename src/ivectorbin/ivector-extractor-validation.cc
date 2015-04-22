@@ -34,16 +34,14 @@ class IvectorCVTask {
  public:
   IvectorCVTask(const IvectorExtractor &extractor,
               const Matrix<BaseFloat> &features,
-              const int32 &randomize_seed,
               const Posterior &posterior,
               IvectorExtractorCVStats *stats): extractor_(extractor),
                                     features_(features),
-                                    randomize_seed_(randomize_seed),
                                     posterior_(posterior),
                                     stats_(stats) {}
 
   void operator () () {
-    stats_->AccCVStatsForUtterance(extractor_, features_, posterior_, randomize_seed_);
+    stats_->AccStatsForUtterance(extractor_, features_, posterior_);
   }
   ~IvectorCVTask() { }  // the destructor doesn't have to do anything.
  private:
@@ -51,7 +49,6 @@ class IvectorCVTask {
   Matrix<BaseFloat> features_; // not a reference, since features come from a
                                // Table and the reference we get from that is
                                // not valid long-term.
-  int32 randomize_seed_;
   Posterior posterior_;  // as above.
   IvectorExtractorCVStats *stats_;
 };
@@ -90,10 +87,7 @@ int main(int argc, char *argv[]) {
     po.Register("lambda", &lambda, "lambda for regularization (default = 1.0)");
     
     int32 cv_share = 5;
-    po.Register("cv-share", &cv_share, "number of cv_share (default = 5)");
-    
-    int32 randomize_seed = 777;
-    po.Register("randomize-seed", &randomize_seed, "randomize seed for cross validation set randomization (default = 777)");
+    po.Register("cv_share", &cv_share, "number of cv_share (default = 5)");
 
     po.Read(argc, argv);
     
@@ -149,7 +143,7 @@ int main(int argc, char *argv[]) {
           continue;
         }
 
-        sequencer.Run(new IvectorCVTask(extractor, mat, randomize_seed, posterior, &stats));
+        sequencer.Run(new IvectorCVTask(extractor, mat, posterior, &stats));
 
         tot_t += posterior.size();
         num_done++;

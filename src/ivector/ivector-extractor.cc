@@ -161,16 +161,20 @@ double IvectorExtractor::GetResidue(
     VectorBase<double> *mean,
     SpMatrix<double> *var,
     const double lambda /*= 1.0*/) const {
-    
+  
   int32 I = NumGauss();
   double residue = 0;
   Vector<double> estimates(FeatDim());
   Vector<double> residue_buffer(FeatDim());
 
-  (*mean)(0) -= prior_offset_;
+  if (mu.NumRows() == 0) {
+    (*mean)(0) -= prior_offset_;
+  }
   double norm = mean->Norm(2.0);
   residue += lambda * norm * norm;
-  (*mean)(0) += prior_offset_;
+  if (mu.NumRows() == 0) {
+    (*mean)(0) += prior_offset_;
+  }
 
   for (int32 i = 0; i < I; i++) {
     double gamma = utt_stats.gamma_(i);
@@ -199,21 +203,30 @@ IvectorExtractor::IvectorExtractor(
     Sigma_inv_[i].Resize(inv_var.NumRows());
     Sigma_inv_[i].CopyFromSp(inv_var);
   }
-  Matrix<double> gmm_means;
-  fgmm.GetMeans(&gmm_means);
   KALDI_ASSERT(!Sigma_inv_.empty());
   int32 feature_dim = Sigma_inv_[0].NumRows(),
       num_gauss = Sigma_inv_.size();
-
-  prior_offset_ = 100.0; // hardwired for now.  Must be nonzero.
-  gmm_means.Scale(1.0 / prior_offset_);
   
   M_.resize(num_gauss);
-  for (int32 i = 0; i < num_gauss; i++) {
-    M_[i].Resize(feature_dim, opts.ivector_dim);
-    M_[i].SetRandn();
-    M_[i].CopyColFromVec(gmm_means.Row(i), 0);
+  if (opts.use_bias) {
+    fgmm.GetMeans(&mu);
+    for (int32 i = 0; i < num_gauss; i++) {
+      M_[i].Resize(feature_dim, opts.ivector_dim);
+      M_[i].SetRandn();
+    }
+  } else {
+    Matrix<double> gmm_means;
+    fgmm.GetMeans(&gmm_means);
+    prior_offset_ = 100.0; // hardwired for now.  Must be nonzero.
+    gmm_means.Scale(1.0 / prior_offset_);
+  
+    for (int32 i = 0; i < num_gauss; i++) {
+      M_[i].Resize(feature_dim, opts.ivector_dim);
+      M_[i].SetRandn();
+      M_[i].CopyColFromVec(gmm_means.Row(i), 0);
+    }
   }
+
   if (opts.use_weights) { // will regress the log-weights on the iVector.
     w_.Resize(num_gauss, opts.ivector_dim);
   } else {
@@ -318,6 +331,7 @@ void IvectorExtractor::GetIvectorDistMean(
     double gamma = utt_stats.gamma_(i);
     if (gamma != 0.0) {
       Vector<double> x(utt_stats.X_.Row(i)); // == \gamma(i) \m_i
+      if (use_bias)
       // next line: a += \gamma_i \M_i^T \Sigma_i^{-1} \m_i
       linear->AddMatVec(1.0, Sigma_inv_M_[i], kTrans, x, 1.0); 
     }
@@ -332,7 +346,9 @@ void IvectorExtractor::GetIvectorDistPrior(
     SpMatrix<double> *quadratic,
     const double lambda /*= 1.0*/) const {
 
-  (*linear)(0) += prior_offset_; // the zero'th dimension has an offset mean.
+  if (mu.NumRows() == 0) {    // we are using Kaldi's 1 dim prior
+    (*linear)(0) += lambda * prior_offset_; // the zero'th dimension has an offset mean.
+  }
   /// The inverse-variance for the prior is the unit matrix.
   quadratic->AddToDiag(lambda);
 }
@@ -424,9 +440,11 @@ double IvectorExtractor::GetPriorAuxf(
   KALDI_ASSERT(mean.Dim() == IvectorDim());
 
   Vector<double> offset(mean);
-  offset(0) -= prior_offset_; // The mean of the prior distribution
-  // may only be nonzero in the first dimension.  Now, "offset" is the
-  // offset of ivector from the prior's mean.
+  if (mu.NumRows() == 0) {
+    offset(0) -= prior_offset_; // The mean of the prior distribution
+    // may only be nonzero in the first dimension.  Now, "offset" is the
+    // offset of ivector from the prior's mean.
+  }
 
 
   if (var == NULL) {
@@ -1206,10 +1224,12 @@ double IvectorExtractorStats::Update(
     ans += UpdateWeights(opts, extractor);
   if (!S_.empty())
     ans += UpdateVariances(opts, extractor);
-  ans += UpdatePrior(opts, extractor); // This will also transform the ivector
+  if (mu.NumRows() == 0) {
+    ans += UpdatePrior(opts, extractor); // This will also transform the ivector
                                        // space.  Note: this must be done as the
                                        // last stage, because it will make the
                                        // stats invalid for that model.
+  }
   KALDI_LOG << "Overall objective-function improvement per frame was " << ans;
   extractor->ComputeDerivedVars();
   return ans;
@@ -1641,9 +1661,10 @@ double EstimateIvectorsOnline(
 }
 
 
-void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extractor,
+void IvectorExtractorCVStats::AccCVStatsForUtterance(const IvectorExtractor &extractor,
                                                    const Matrix<BaseFloat> &feats,
-                                                   const Posterior &post) {
+                                                   const Posterior &post,
+                                                   const int32 randomize_seed) {
 
   typedef std::vector<std::pair<int32, BaseFloat> > VecType;
 
@@ -1665,6 +1686,7 @@ void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extra
 
   NnetDataRandomizerOptions rnd_opts;
   rnd_opts.SetMinibatchSize(minibatch_size);
+  rnd_opts.SetSeed(randomize_seed);
 
   PosteriorRandomizer posts_randomizer(rnd_opts);
   kaldi::MatrixRandomizer feature_randomizer(rnd_opts);
@@ -1672,10 +1694,11 @@ void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extra
   feature_randomizer.AddData(feats);
   posts_randomizer.AddData(post);
 
-  RandomizerMask randomizer_mask(rnd_opts);
-  const std::vector<int32>& mask = randomizer_mask.Generate(feature_randomizer.NumFrames());
-  feature_randomizer.Randomize(mask);
-  posts_randomizer.Randomize(mask);
+//  RandomizerMask randomizer_mask(rnd_opts);
+//  const std::vector<int32>& mask = randomizer_mask.Generate(feature_randomizer.NumFrames());
+//  we don't randomize, because this simulates the real senario
+//  feature_randomizer.Randomize(mask);
+//  posts_randomizer.Randomize(mask);
 
   // The zeroth and 1st-order stats are in "utt_stats".
   IvectorExtractorUtteranceStats utt_stats(num_gauss, feat_dim,
@@ -1684,6 +1707,8 @@ void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extra
   IvectorExtractorUtteranceStats utt_cv_stats(num_gauss, feat_dim,
                                               false /*update_variance*/);
 
+  double tot_residue = 0.0f;
+  double tot_auxf_per_frame = 0.0f;
   for ( ; !feature_randomizer.Done(); feature_randomizer.Next(), posts_randomizer.Next()) {
     const Matrix<BaseFloat>& feats = feature_randomizer.LeftOverValue();
     const Posterior& posts = posts_randomizer.LeftOverValue();
@@ -1714,14 +1739,71 @@ void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extra
                                           &ivec_var,
                                           lambda_);
 
-    log_tot_residue_lock_.Lock();
-    log_tot_residue_ = LogAdd(log_tot_residue_, Log(residue));
-    log_tot_residue_lock_.Unlock();
+    double auxf = extractor.GetAuxf(utt_cv_stats, ivec_mean);
+    double T = TotalPosterior(cv_posts);
 
+    tot_auxf_per_frame += auxf / T;
+    tot_residue += residue;
   }
+  log_tot_residue_lock_.Lock();
+  log_tot_residue_ = LogAdd(log_tot_residue_, Log(tot_residue));
+  tot_auxf_per_frame_ += tot_auxf_per_frame;
+  tot_residue_ += tot_residue;
+  log_tot_avg_residue_ = LogAdd(log_tot_avg_residue_, Log(tot_residue/num_frames));
+  tot_avg_residue_ += tot_residue/num_frames;
+  log_tot_residue_lock_.Unlock();
 }
 
+void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extractor,
+                                                   const Matrix<BaseFloat> &feats,
+                                                   const Posterior &post) {
 
+  typedef std::vector<std::pair<int32, BaseFloat> > VecType;
+
+  int32 num_gauss = extractor.NumGauss(), feat_dim = extractor.FeatDim();
+
+  if (feat_dim != feats.NumCols()) {
+    KALDI_ERR << "Feature dimension mismatch, expected " << feat_dim
+              << ", got " << feats.NumCols();
+  }
+  KALDI_ASSERT(static_cast<int32>(post.size()) == feats.NumRows());
+
+  IvectorExtractorUtteranceStats utt_stats(num_gauss, feat_dim,
+                                           false /*update_variance*/);
+
+  utt_stats.AccStats(feats, post);
+
+  int32 ivector_dim = extractor.IvectorDim();
+  Vector<double> ivec_mean(ivector_dim);
+  SpMatrix<double> ivec_var(ivector_dim);
+
+  ivec_mean(0) = extractor.PriorOffset();
+
+  extractor.GetIvectorDistribution(utt_stats,
+                                   &ivec_mean,
+                                   &ivec_var,
+                                   lambda_);
+
+  double residue = extractor.GetResidue(utt_stats,
+                                        &ivec_mean,
+                                        &ivec_var,
+                                        lambda_);
+
+  int32 num_frames = feats.NumRows();
+  
+  double auxf = extractor.GetAuxf(utt_stats, ivec_mean);
+  double T = TotalPosterior(post);
+  double tot_auxf_per_frame = auxf / T;
+
+  log_tot_residue_lock_.Lock();
+  log_tot_residue_ = LogAdd(log_tot_residue_, Log(residue));
+  tot_residue_ += residue;
+  log_tot_avg_residue_ = LogAdd(log_tot_avg_residue_, Log(residue/num_frames));
+  tot_auxf_per_frame_ += tot_auxf_per_frame;
+  tot_avg_residue_ += residue/num_frames;
+  log_tot_residue_lock_.Unlock();
+
+}
 
 
 } // namespace kaldi
