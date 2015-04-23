@@ -34,9 +34,8 @@ class IvectorGetMinMaxEigTask {
   IvectorGetMinMaxEigTask(const IvectorExtractor &extractor,
                      std::string utt,
                      const Matrix<BaseFloat> &feats,
-                     const Posterior &posterior,
-                     double lambda):
-      extractor_(extractor), utt_(utt), feats_(feats), posterior_(posterior), lambda_(lambda) { }
+                     const Posterior &posterior) :
+                     extractor_(extractor), utt_(utt), feats_(feats), posterior_(posterior) { }
 
   void operator () () {
     bool need_2nd_order_stats = false;
@@ -47,7 +46,7 @@ class IvectorGetMinMaxEigTask {
       
     utt_stats.AccStats(feats_, posterior_);
     
-    extractor_.GetIvectorMinMaxEigenvalue(utt_stats, min_eig_, max_eig_, lambda_);
+    extractor_.GetIvectorMinMaxEigenvalue(utt_stats, min_eig_, max_eig_);
   }
   ~IvectorGetMinMaxEigTask() {
     KALDI_LOG << "Ivector matrix V^T*W*V for utt "<< utt_ << " min eig value " << min_eig_ << " , max eig value "
@@ -60,7 +59,6 @@ class IvectorGetMinMaxEigTask {
   Posterior posterior_;
   double min_eig_;
   double max_eig_;
-  double lambda_;
 };
 
 
@@ -87,8 +85,6 @@ int main(int argc, char *argv[]) {
     IvectorExtractorStatsOptions stats_opts;
     TaskSequencerConfig sequencer_config;
     po.Register("derived-in", &derived_in, "Read extractor with derived vars (default = false)");
-    double lambda;
-    po.Register("lambda", &lambda, "Regularization parameter for ivector model");
 
     stats_opts.Register(&po);
     sequencer_config.Register(&po);
@@ -140,7 +136,7 @@ int main(int argc, char *argv[]) {
           continue;
         }
 
-        sequencer.Run(new IvectorGetMinMaxEigTask(extractor, key, mat, posterior,lambda));
+        sequencer.Run(new IvectorGetMinMaxEigTask(extractor, key, mat, posterior));
                       
         tot_t += posterior.size();
         num_done++;

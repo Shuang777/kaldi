@@ -36,10 +36,9 @@ class IvectorExtractTask {
                      const Matrix<BaseFloat> &feats,
                      const Posterior &posterior,
                      BaseFloatVectorWriter *writer,
-                     double *tot_auxf_change,
-                     double lambda):
+                     double *tot_auxf_change):
       extractor_(extractor), utt_(utt), feats_(feats), posterior_(posterior),
-      writer_(writer), tot_auxf_change_(tot_auxf_change), lambda_(lambda) { }
+      writer_(writer), tot_auxf_change_(tot_auxf_change) { }
 
   void operator () () {
     bool need_2nd_order_stats = false;
@@ -51,15 +50,16 @@ class IvectorExtractTask {
     utt_stats.AccStats(feats_, posterior_);
     
     ivector_.Resize(extractor_.IvectorDim());
-    ivector_(0) = extractor_.PriorOffset();
+    if (extractor_.DoUsePrior())
+      ivector_(0) = extractor_.PriorOffset();
 
     if (tot_auxf_change_ != NULL) {
       double old_auxf = extractor_.GetAuxf(utt_stats, ivector_);
-      extractor_.GetIvectorDistribution(utt_stats, &ivector_, NULL, lambda_);
+      extractor_.GetIvectorDistribution(utt_stats, &ivector_, NULL);
       double new_auxf = extractor_.GetAuxf(utt_stats, ivector_);
       auxf_change_ = new_auxf - old_auxf;
     } else {
-      extractor_.GetIvectorDistribution(utt_stats, &ivector_, NULL, lambda_);
+      extractor_.GetIvectorDistribution(utt_stats, &ivector_, NULL);
     }
   }
   ~IvectorExtractTask() {
@@ -88,7 +88,6 @@ class IvectorExtractTask {
   double *tot_auxf_change_; // if non-NULL we need the auxf change.
   Vector<double> ivector_;
   double auxf_change_;
-  double lambda_;
 };
 
 
@@ -120,8 +119,6 @@ int main(int argc, char *argv[]) {
                 "nonzero iVector (a potentially useful diagnostic).  Combine "
                 "with --verbose=2 for per-utterance information");
     po.Register("derived-in", &derived_in, "Read extractor with derived vars (default = false)");
-    double lambda;
-    po.Register("lambda", &lambda, "Regularization parameter for ivector model");
 
     stats_opts.Register(&po);
     sequencer_config.Register(&po);
@@ -179,7 +176,7 @@ int main(int argc, char *argv[]) {
         double *auxf_ptr = (compute_objf_change ? &tot_auxf_change : NULL );
 
         sequencer.Run(new IvectorExtractTask(extractor, key, mat, posterior,
-                                             &ivector_writer, auxf_ptr, lambda));
+                                             &ivector_writer, auxf_ptr));
                       
         tot_t += posterior.size();
         num_done++;

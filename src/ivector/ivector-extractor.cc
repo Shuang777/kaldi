@@ -61,13 +61,12 @@ void IvectorExtractor::InvertWithFlooring(const SpMatrix<double> &inverse_var,
 void IvectorExtractor::GetIvectorDistribution(
     const IvectorExtractorUtteranceStats &utt_stats,
     VectorBase<double> *mean,
-    SpMatrix<double> *var,
-    const double lambda /*= 1.0*/) const {
+    SpMatrix<double> *var) const {
   if (!IvectorDependentWeights()) {
     Vector<double> linear(IvectorDim());
     SpMatrix<double> quadratic(IvectorDim());
     GetIvectorDistMean(utt_stats, &linear, &quadratic);
-    GetIvectorDistPrior(utt_stats, &linear, &quadratic, lambda);
+    GetIvectorDistPrior(utt_stats, &linear, &quadratic);
     if (var != NULL) {
       var->CopyFromSp(quadratic);
       var->Invert(); // now it's a variance.
@@ -135,13 +134,12 @@ void IvectorExtractor::GetIvectorDistribution(
 void IvectorExtractor::GetIvectorMinMaxEigenvalue(
     const IvectorExtractorUtteranceStats &utt_stats,
     double &min_eig_val,
-    double &max_eig_val,
-    const double lambda /*= 1.0*/) const {
+    double &max_eig_val) const {
   if (!IvectorDependentWeights()) {
     Vector<double> linear(IvectorDim());
     SpMatrix<double> quadratic(IvectorDim());
     GetIvectorDistMean(utt_stats, &linear, &quadratic);
-    GetIvectorDistPrior(utt_stats, &linear, &quadratic, lambda);
+    GetIvectorDistPrior(utt_stats, &linear, &quadratic);
     Vector<double> s(quadratic.NumRows());
     quadratic.Eig(&s, NULL);
     min_eig_val = std::abs(s(0));
@@ -159,8 +157,7 @@ void IvectorExtractor::GetIvectorMinMaxEigenvalue(
 double IvectorExtractor::GetResidue(
     const IvectorExtractorUtteranceStats &utt_stats,
     VectorBase<double> *mean,
-    SpMatrix<double> *var,
-    const double lambda /*= 1.0*/) const {
+    SpMatrix<double> *var) const {
   
   int32 I = NumGauss();
   double residue = 0;
@@ -171,7 +168,7 @@ double IvectorExtractor::GetResidue(
     (*mean)(0) -= prior_offset_;
   }
   double norm = mean->Norm(2.0);
-  residue += lambda * norm * norm;
+  residue += lambda_ * norm * norm;
   if (mu.NumRows() == 0) {
     (*mean)(0) += prior_offset_;
   }
@@ -180,9 +177,15 @@ double IvectorExtractor::GetResidue(
     double gamma = utt_stats.gamma_(i);
     if (gamma != 0.0) {
       estimates.CopyRowFromMat(utt_stats.X_, i); // = \gamma(i) \m_i
-      estimates.AddMatVec(-1.0, M_[i], kNoTrans, *mean, 1.0/gamma);    // = m_i - M * y(means)
 
-      residue_buffer.AddSpVec(gamma, Sigma_inv_[i], estimates, 0.0);  // = gamma * sigma_inv * (m_i - M * y)
+      if (mu.NumRows() != 0) {    // we have bias term
+        Vector<double> mu_x(mu.Row(i));
+        estimates.AddVec(-gamma, mu_x);      // = \gamma(i) (\m_i - \m_SI)
+      }
+
+      estimates.AddMatVec(-1.0, M_[i], kNoTrans, *mean, 1.0/gamma);    // = m_i - m_SI - M * y(means)
+
+      residue_buffer.AddSpVec(gamma, Sigma_inv_[i], estimates, 0.0);  // = gamma * sigma_inv * (m_i - m_SI - M * y)
       residue_buffer.MulElements(estimates); // = (m_i - M * y)  .* (W * (m_i - M * y))
 
       residue += residue_buffer.Sum();
@@ -195,7 +198,8 @@ double IvectorExtractor::GetResidue(
 
 IvectorExtractor::IvectorExtractor(
     const IvectorExtractorOptions &opts,
-    const FullGmm &fgmm) {
+    const FullGmm &fgmm,
+    const double lambda /*= 1.0*/) {
   KALDI_ASSERT(opts.ivector_dim > 0);
   Sigma_inv_.resize(fgmm.NumGauss());
   for (int32 i = 0; i < fgmm.NumGauss(); i++) {
@@ -226,6 +230,7 @@ IvectorExtractor::IvectorExtractor(
       M_[i].CopyColFromVec(gmm_means.Row(i), 0);
     }
   }
+  lambda_ = lambda;
 
   if (opts.use_weights) { // will regress the log-weights on the iVector.
     w_.Resize(num_gauss, opts.ivector_dim);
@@ -331,7 +336,10 @@ void IvectorExtractor::GetIvectorDistMean(
     double gamma = utt_stats.gamma_(i);
     if (gamma != 0.0) {
       Vector<double> x(utt_stats.X_.Row(i)); // == \gamma(i) \m_i
-      if (use_bias)
+      if (mu.NumRows() != 0) {
+        Vector<double> mu_x(mu.Row(i));
+        x.AddVec(gamma, mu_x);
+      }
       // next line: a += \gamma_i \M_i^T \Sigma_i^{-1} \m_i
       linear->AddMatVec(1.0, Sigma_inv_M_[i], kTrans, x, 1.0); 
     }
@@ -343,14 +351,13 @@ void IvectorExtractor::GetIvectorDistMean(
 void IvectorExtractor::GetIvectorDistPrior(
     const IvectorExtractorUtteranceStats &utt_stats,
     VectorBase<double> *linear,
-    SpMatrix<double> *quadratic,
-    const double lambda /*= 1.0*/) const {
+    SpMatrix<double> *quadratic) const {
 
   if (mu.NumRows() == 0) {    // we are using Kaldi's 1 dim prior
-    (*linear)(0) += lambda * prior_offset_; // the zero'th dimension has an offset mean.
+    (*linear)(0) += lambda_ * prior_offset_; // the zero'th dimension has an offset mean.
   }
   /// The inverse-variance for the prior is the unit matrix.
-  quadratic->AddToDiag(lambda);
+  quadratic->AddToDiag(lambda_);
 }
 
 
@@ -516,6 +523,7 @@ double IvectorExtractor::GetAcousticAuxf(
    i.e. the mean times the count, so we need to modify the definitions
    above accordingly.
 */
+// Might no longer be accurate for bias based system
 double IvectorExtractor::GetAcousticAuxfMean(
     const IvectorExtractorUtteranceStats &utt_stats,
     const VectorBase<double> &mean,
@@ -546,6 +554,7 @@ double IvectorExtractor::GetAcousticAuxfMean(
   return ans;
 }
 
+// Might no longer be accurate for bias based system
 double IvectorExtractor::GetAcousticAuxfGconst(
     const IvectorExtractorUtteranceStats &utt_stats) const {
   return VecVec(Vector<double>(utt_stats.gamma_),
@@ -723,8 +732,15 @@ void IvectorExtractor::Write(std::ostream &os, bool binary, const bool write_der
   KALDI_ASSERT(size == static_cast<int32>(Sigma_inv_.size()));
   for (int32 i = 0; i < size; i++)
     Sigma_inv_[i].Write(os, binary);
-  WriteToken(os, binary, "<IvectorOffset>");
-  WriteBasicType(os, binary, prior_offset_);
+  WriteToken(os, binary, "<Lambda>");
+  WriteBasicType(os, binary, lambda_);
+  if (mu.NumRows() == 0) {
+    WriteToken(os, binary, "<IvectorOffset>");
+    WriteBasicType(os, binary, prior_offset_);
+  } else {
+    WriteToken(os, binary, "<MeanBias>");
+    mu.Write(os, binary);
+  }
   if (write_derived) {
     WriteToken(os, binary, "<gconsts>");
     gconsts_.Write(os, binary);
@@ -758,8 +774,19 @@ void IvectorExtractor::Read(std::istream &is, bool binary, const bool read_deriv
   Sigma_inv_.resize(size);
   for (int32 i = 0; i < size; i++)
     Sigma_inv_[i].Read(is, binary);
-  ExpectToken(is, binary, "<IvectorOffset>");
-  ReadBasicType(is, binary, &prior_offset_);
+  std::string token;
+  ReadToken(is, binary, &token);
+  if (token == "<Lambda>") {
+    ReadBasicType(is, binary, &lambda_);
+    ReadToken(is, binary, &token);
+  } else {
+    lambda_ = 1.0;
+  }
+  if (token == "<IvectorOffset>") {
+    ReadBasicType(is, binary, &prior_offset_);
+  } else if (token == "<MeanBias>") {
+    mu.Read(is, binary);
+  }
   if (read_derived) {
     ExpectToken(is, binary, "<gconsts>");
     gconsts_.Read(is, binary);
@@ -869,11 +896,16 @@ void IvectorExtractorStats::CommitStatsForM(
 
   // We do the occupation stats here also.
   gamma_.AddVec(1.0, utt_stats.gamma_);
-  
+ 
+  const Matrix<double>& mu = extractor.GetBias();
+
   // Stats for the linear term in M:
   for  (int32 i = 0; i < extractor.NumGauss(); i++) {
-    Y_[i].AddVecVec(1.0, utt_stats.X_.Row(i),
-                    Vector<double>(ivec_mean));
+    Vector<double> x(utt_stats.X_.Row(i)); // == \gamma(i) \m_i
+    if (!extractor.DoUsePrior()) {
+      x.AddVec(-gamma_(i), mu.Row(i));
+    }
+    Y_[i].AddVecVec(1.0, x, Vector<double>(ivec_mean));
   }
   gamma_Y_lock_.Unlock();
 
@@ -1015,8 +1047,7 @@ void IvectorExtractorStats::CommitStatsForPrior(
 
 void IvectorExtractorStats::CommitStatsForUtterance(
     const IvectorExtractor &extractor,
-    const IvectorExtractorUtteranceStats &utt_stats,
-    const double lambda /*=1.0*/) {
+    const IvectorExtractorUtteranceStats &utt_stats) {
   
   int32 ivector_dim = extractor.IvectorDim();
   Vector<double> ivec_mean(ivector_dim);
@@ -1024,8 +1055,7 @@ void IvectorExtractorStats::CommitStatsForUtterance(
 
   extractor.GetIvectorDistribution(utt_stats,
                                    &ivec_mean,
-                                   &ivec_var,
-                                   lambda);
+                                   &ivec_var);
 
   if (config_.compute_auxf)
     tot_auxf_ += extractor.GetAuxf(utt_stats, ivec_mean, &ivec_var);
@@ -1070,8 +1100,7 @@ void IvectorExtractorStats::CheckDims(const IvectorExtractor &extractor) const {
 void IvectorExtractorStats::AccStatsForUtterance(
     const IvectorExtractor &extractor,
     const MatrixBase<BaseFloat> &feats,
-    const Posterior &post,
-    const double lambda /*=1.0*/) {
+    const Posterior &post) {
   typedef std::vector<std::pair<int32, BaseFloat> > VecType;
 
   CheckDims(extractor);
@@ -1092,7 +1121,7 @@ void IvectorExtractorStats::AccStatsForUtterance(
 
   utt_stats.AccStats(feats, post);
   
-  CommitStatsForUtterance(extractor, utt_stats, lambda);
+  CommitStatsForUtterance(extractor, utt_stats);
 }
 
 double IvectorExtractorStats::AccStatsForUtterance(
@@ -1224,12 +1253,10 @@ double IvectorExtractorStats::Update(
     ans += UpdateWeights(opts, extractor);
   if (!S_.empty())
     ans += UpdateVariances(opts, extractor);
-  if (mu.NumRows() == 0) {
-    ans += UpdatePrior(opts, extractor); // This will also transform the ivector
+  ans += UpdatePrior(opts, extractor); // This will also transform the ivector
                                        // space.  Note: this must be done as the
                                        // last stage, because it will make the
                                        // stats invalid for that model.
-  }
   KALDI_LOG << "Overall objective-function improvement per frame was " << ans;
   extractor->ComputeDerivedVars();
   return ans;
@@ -1551,62 +1578,70 @@ double IvectorExtractorStats::UpdatePrior(
       KALDI_ASSERT(Tproj.IsUnit(1.0e-06));
     }
   }
-  Vector<double> sum_proj(ivector_dim);
-  sum_proj.AddMatVec(1.0, T, kNoTrans, sum, 0.0);
+  double ans = 0;
+  if (extractor->DoUsePrior()) {
+    Vector<double> sum_proj(ivector_dim);
+    sum_proj.AddMatVec(1.0, T, kNoTrans, sum, 0.0);
 
-  KALDI_ASSERT(sum_proj.Norm(2.0) != 0.0);
+    KALDI_ASSERT(sum_proj.Norm(2.0) != 0.0);
 
-  // We need a projection that (like T) makes "covar" unit,
-  // but also that sends "sum" to a multiple of the vector e0 = [ 1 0 0 0 .. ].
-  // We'll do this by a transform that follows T, of the form
-  // (I - 2 a a^T), where a is unit.  [i.e. a Householder reflection].
-  // Firstly, let x equal sum_proj normalized to unit length.
-  // We'll let a = alpha x + beta e0, for suitable coefficients alpha and beta,
-  // To project sum_proj (or equivalenty, x) to a multiple of e0, we'll need that
-  // the x term in
-  //  (I - 2(alpha x + beta e0)(alpha x + beta e0)  x
-  // equals zero., i.e. 1 - 2 alpha (alpha x^T x + beta e0^T x) == 0,
-  //    (1 - 2 alpha^2 - 2 alpha beta x0) = 0
-  // To ensure that a is unit, we require that 
-  // (alpha x + beta e0).(alpha x + beta e0) = 1, i.e.
-  //    alpha^2 + beta^2 + 2 alpha beta x0 = 1
-  // at wolframalpha.com,
-  // Solve[ {a^2 + b^2 + 2 a b x = 1}, {1 - 2 a^2 - 2 a b x = 0}, {a, b} ]
-  // gives different solutions, but the one that keeps the offset positive
-  // after projection seems to be:
-  //    alpha = 1/(sqrt(2)sqrt(1 - x0)), beta = -alpha
-  
-  Matrix<double> U(ivector_dim, ivector_dim);
-  U.SetUnit();
-  Vector<double> x(sum_proj);
-  x.Scale(1.0 / x.Norm(2.0));
-  double x0 = x(0), alpha, beta;
-  alpha = 1.0 / (M_SQRT2 * sqrt(1.0 - x0));
-  beta = -alpha;
-  Vector<double> a(x);
-  a.Scale(alpha);
-  a(0) += beta;
-  U.AddVecVec(-2.0, a, a);
-  
-  Matrix<double> V(ivector_dim, ivector_dim);
-  V.AddMatMat(1.0, U, kNoTrans, T, kNoTrans, 0.0);
+    // We need a projection that (like T) makes "covar" unit,
+    // but also that sends "sum" to a multiple of the vector e0 = [ 1 0 0 0 .. ].
+    // We'll do this by a transform that follows T, of the form
+    // (I - 2 a a^T), where a is unit.  [i.e. a Householder reflection].
+    // Firstly, let x equal sum_proj normalized to unit length.
+    // We'll let a = alpha x + beta e0, for suitable coefficients alpha and beta,
+    // To project sum_proj (or equivalenty, x) to a multiple of e0, we'll need that
+    // the x term in
+    //  (I - 2(alpha x + beta e0)(alpha x + beta e0)  x
+    // equals zero., i.e. 1 - 2 alpha (alpha x^T x + beta e0^T x) == 0,
+    //    (1 - 2 alpha^2 - 2 alpha beta x0) = 0
+    // To ensure that a is unit, we require that 
+    // (alpha x + beta e0).(alpha x + beta e0) = 1, i.e.
+    //    alpha^2 + beta^2 + 2 alpha beta x0 = 1
+    // at wolframalpha.com,
+    // Solve[ {a^2 + b^2 + 2 a b x = 1}, {1 - 2 a^2 - 2 a b x = 0}, {a, b} ]
+    // gives different solutions, but the one that keeps the offset positive
+    // after projection seems to be:
+    //    alpha = 1/(sqrt(2)sqrt(1 - x0)), beta = -alpha
+    
+    Matrix<double> U(ivector_dim, ivector_dim);
+    U.SetUnit();
+    Vector<double> x(sum_proj);
+    x.Scale(1.0 / x.Norm(2.0));
+    double x0 = x(0), alpha, beta;
+    alpha = 1.0 / (M_SQRT2 * sqrt(1.0 - x0));
+    beta = -alpha;
+    Vector<double> a(x);
+    a.Scale(alpha);
+    a(0) += beta;
+    U.AddVecVec(-2.0, a, a);
+    
+    Matrix<double> V(ivector_dim, ivector_dim);
+    V.AddMatMat(1.0, U, kNoTrans, T, kNoTrans, 0.0);
 
-  if (num_floored == 0) { // a check..
-    SpMatrix<double> Vproj(ivector_dim);
-    Vproj.AddMat2Sp(1.0, V, kNoTrans, covar, 0.0);
-    KALDI_ASSERT(Vproj.IsUnit(1.0e-04));
+    if (num_floored == 0) { // a check..
+      SpMatrix<double> Vproj(ivector_dim);
+      Vproj.AddMat2Sp(1.0, V, kNoTrans, covar, 0.0);
+      KALDI_ASSERT(Vproj.IsUnit(1.0e-04));
+    }
+
+    // rather than make "covar" unit, we make it lambda*unit
+    V.Scale(sqrt(extractor->GetLambda()));
+    
+    Vector<double> sum_vproj(ivector_dim);
+    sum_vproj.AddMatVec(1.0, V, kNoTrans, sum, 0.0);
+    // Make sure sum_vproj is of the form [ x 0 0 0 .. ] with x > 0.
+    // (the x > 0 part isn't really necessary, it's just nice to know.)
+    KALDI_ASSERT(ApproxEqual(sum_vproj(0), sum_vproj.Norm(2.0)));
+
+    ans = PriorDiagnostics(extractor->prior_offset_);
+    
+    extractor->TransformIvectors(V, sum_vproj(0));
+  } else {
+    T.Scale(sqrt(extractor->GetLambda()));
+    extractor->TransformIvectors(T, 0);
   }
-
-  
-  Vector<double> sum_vproj(ivector_dim);
-  sum_vproj.AddMatVec(1.0, V, kNoTrans, sum, 0.0);
-  // Make sure sum_vproj is of the form [ x 0 0 0 .. ] with x > 0.
-  // (the x > 0 part isn't really necessary, it's just nice to know.)
-  KALDI_ASSERT(ApproxEqual(sum_vproj(0), sum_vproj.Norm(2.0)));
-
-  double ans = PriorDiagnostics(extractor->prior_offset_);
-  
-  extractor->TransformIvectors(V, sum_vproj(0));
 
   return ans;
 }
@@ -1621,7 +1656,12 @@ IvectorExtractorStats::IvectorExtractorStats (
     ivector_sum_(other.ivector_sum_), ivector_scatter_(other.ivector_scatter_) {
 }
 
-
+void IvectorExtractorStats::PrintS() {
+  for (int32 i = 0; i < S_.size(); i++) {
+    printf("%f ", S_[i].FrobeniusNorm());
+  }
+  printf("\n");
+}
 
 double EstimateIvectorsOnline(
     const Matrix<BaseFloat> &feats,
@@ -1722,12 +1762,13 @@ void IvectorExtractorCVStats::AccCVStatsForUtterance(const IvectorExtractor &ext
     Vector<double> ivec_mean(ivector_dim);
     SpMatrix<double> ivec_var(ivector_dim);
 
-    ivec_mean(0) = extractor.PriorOffset();
+    if (extractor.DoUsePrior()) {
+      ivec_mean(0) = extractor.PriorOffset();
+    }
 
     extractor.GetIvectorDistribution(utt_stats,
                                      &ivec_mean,
-                                     &ivec_var,
-                                     lambda_);
+                                     &ivec_var);
 
     const Matrix<BaseFloat>& cv_feats = feature_randomizer.Value();
     const Posterior& cv_posts = posts_randomizer.Value();
@@ -1736,8 +1777,7 @@ void IvectorExtractorCVStats::AccCVStatsForUtterance(const IvectorExtractor &ext
 
     double residue = extractor.GetResidue(utt_cv_stats,
                                           &ivec_mean,
-                                          &ivec_var,
-                                          lambda_);
+                                          &ivec_var);
 
     double auxf = extractor.GetAuxf(utt_cv_stats, ivec_mean);
     double T = TotalPosterior(cv_posts);
@@ -1777,17 +1817,17 @@ void IvectorExtractorCVStats::AccStatsForUtterance(const IvectorExtractor &extra
   Vector<double> ivec_mean(ivector_dim);
   SpMatrix<double> ivec_var(ivector_dim);
 
-  ivec_mean(0) = extractor.PriorOffset();
+  if (extractor.DoUsePrior()) {
+    ivec_mean(0) = extractor.PriorOffset();
+  }
 
   extractor.GetIvectorDistribution(utt_stats,
                                    &ivec_mean,
-                                   &ivec_var,
-                                   lambda_);
+                                   &ivec_var);
 
   double residue = extractor.GetResidue(utt_stats,
                                         &ivec_mean,
-                                        &ivec_var,
-                                        lambda_);
+                                        &ivec_var);
 
   int32 num_frames = feats.NumRows();
   

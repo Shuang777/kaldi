@@ -40,6 +40,8 @@ int main(int argc, char *argv[]) {
     ParseOptions po(usage);
     po.Register("binary", &binary, "Write output in binary mode");
     ivector_opts.Register(&po);
+    double lambda = 1;
+    po.Register("lambda", &lambda, "Prior for ivectors");
 
     po.Read(argc, argv);
 
@@ -55,7 +57,7 @@ int main(int argc, char *argv[]) {
     FullGmm fgmm;
     ReadKaldiObject(fgmm_rxfilename, &fgmm);
 
-    IvectorExtractor extractor(ivector_opts, fgmm);
+    IvectorExtractor extractor(ivector_opts, fgmm, lambda);
 
     WriteKaldiObject(extractor, ivector_extractor_wxfilename, binary);
 

@@ -100,7 +100,7 @@ struct IvectorExtractorOptions {
   bool use_weights;
   bool use_bias;
   IvectorExtractorOptions(): ivector_dim(400), num_iters(2),
-                             use_weights(true) use_bias(false) { }
+                             use_weights(true), use_bias(false) { }
   void Register(OptionsItf *po) {
     po->Register("num-iters", &num_iters, "Number of iterations in "
                  "iVector estimation (>1 needed due to weights)");
@@ -133,7 +133,8 @@ class IvectorExtractor {
   
   IvectorExtractor(
       const IvectorExtractorOptions &opts,
-      const FullGmm &fgmm);
+      const FullGmm &fgmm,
+      const double lambda = 1.0);
 
   /// Gets the distribution over ivectors (or at least, a Gaussian approximation
   /// to it).  The output "var" may be NULL if you don't need it.  "mean", and
@@ -142,20 +143,19 @@ class IvectorExtractor {
   void GetIvectorDistribution(
       const IvectorExtractorUtteranceStats &utt_stats,
       VectorBase<double> *mean,
-      SpMatrix<double> *var,
-      const double lambda = 1.0) const;
+      SpMatrix<double> *var) const;
 
   void GetIvectorMinMaxEigenvalue(
       const IvectorExtractorUtteranceStats &utt_stats,
       double &min_eig_val, 
-      double &max_eig_val,
-      const double lambda = 1.0) const;
+      double &max_eig_val) const;
+  
+  const Matrix<double> & GetBias() const { return mu;}
 
   /// Get residue from regression
   double GetResidue (const IvectorExtractorUtteranceStats &utt_stats,
                      VectorBase<double> *mean,
-                     SpMatrix<double> *var,
-                     const double lambda = 1.0) const;
+                     SpMatrix<double> *var) const;
 
   /// The distribution over iVectors, in our formulation, is not centered at
   /// zero; its first dimension has a nonzero offset.  This function returns
@@ -225,8 +225,7 @@ class IvectorExtractor {
   void GetIvectorDistPrior(
       const IvectorExtractorUtteranceStats &utt_stats,
       VectorBase<double> *linear,
-      SpMatrix<double> *quadratic,
-      const double lambda = 1.0) const;
+      SpMatrix<double> *quadratic) const;
 
   /// Gets the linear and quadratic terms in the distribution over
   /// iVectors, that arise from the weights (if applicable).  The
@@ -240,6 +239,7 @@ class IvectorExtractor {
       VectorBase<double> *linear,
       SpMatrix<double> *quadratic) const;
 
+  double GetLambda() { return lambda_;}
   // Note: the function GetStats no longer exists due to code refactoring.
   // Instead of this->GetStats(feats, posterior, &utt_stats), call
   // utt_stats.AccStats(feats, posterior).  
@@ -254,6 +254,8 @@ class IvectorExtractor {
 
   // Note: we allow the default assignment and copy operators
   // because they do what we want.
+  //
+  bool DoUsePrior() const {return (mu.NumRows() == 0);}
  protected:
   void ComputeDerivedVars();
   void ComputeDerivedVars(int32 i);
@@ -291,6 +293,8 @@ class IvectorExtractor {
   /// This is used to handle the global offset of the speaker-adapted means in a
   /// simple way.
   double prior_offset_;
+
+  double lambda_;
 
   // Below are *derived variables* that can be computed from the
   // variables above.
@@ -467,8 +471,7 @@ class IvectorExtractorStats {
   
   void AccStatsForUtterance(const IvectorExtractor &extractor,
                             const MatrixBase<BaseFloat> &feats,
-                            const Posterior &post,
-                            const double lambda = 1.0);
+                            const Posterior &post);
 
   // This version (intended mainly for testing) works out the Gaussian
   // posteriors from the model.  Returns total log-like for feats, given
@@ -491,6 +494,8 @@ class IvectorExtractorStats {
 
   double AuxfPerFrame() { return tot_auxf_ / gamma_.Sum(); }
 
+  void PrintS();
+
   // Copy constructor.
   explicit IvectorExtractorStats (const IvectorExtractorStats &other);
  protected:
@@ -500,8 +505,7 @@ class IvectorExtractorStats {
   
   // This is called by AccStatsForUtterance
   void CommitStatsForUtterance(const IvectorExtractor &extractor,
-                               const IvectorExtractorUtteranceStats &utt_stats,
-                               const double lambda = 1.0);
+                               const IvectorExtractorUtteranceStats &utt_stats);
 
   /// This is called by CommitStatsForUtterance.  We commit the stats
   /// used to update the M matrix.
@@ -659,14 +663,13 @@ class IvectorExtractorCVStats {
  public:
   friend class IvectorExtractor;
 
-  IvectorExtractorCVStats(): log_tot_residue_(kLogZeroDouble), tot_auxf_per_frame_(0.0), tot_residue_(0.0), log_tot_avg_residue_(kLogZeroDouble), tot_avg_residue_(0.0), lambda_(1.0), cv_share_(5) {}
+  IvectorExtractorCVStats(): log_tot_residue_(kLogZeroDouble), tot_auxf_per_frame_(0.0), tot_residue_(0.0), log_tot_avg_residue_(kLogZeroDouble), tot_avg_residue_(0.0), cv_share_(5) {}
   
-  IvectorExtractorCVStats(double lambda, int32 cv_share): log_tot_residue_(kLogZeroDouble), 
+  IvectorExtractorCVStats(int32 cv_share): log_tot_residue_(kLogZeroDouble), 
                                                           tot_auxf_per_frame_(0.0),
                                                           tot_residue_(0.0),
                                                           log_tot_avg_residue_(kLogZeroDouble),
                                                           tot_avg_residue_(0.0),
-                                                          lambda_(lambda),
                                                           cv_share_(cv_share) { }
   
   void AccCVStatsForUtterance(const IvectorExtractor &extractor,
@@ -703,8 +706,6 @@ class IvectorExtractorCVStats {
   double log_tot_avg_residue_;
 
   double tot_avg_residue_;
-
-  double lambda_;
 
   double cv_share_;
 

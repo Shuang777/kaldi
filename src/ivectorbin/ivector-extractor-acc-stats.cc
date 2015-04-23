@@ -35,15 +35,13 @@ class IvectorTask {
   IvectorTask(const IvectorExtractor &extractor,
               const Matrix<BaseFloat> &features,
               const Posterior &posterior,
-              IvectorExtractorStats *stats,
-              const double lambda = 1.0): extractor_(extractor),
+              IvectorExtractorStats *stats): extractor_(extractor),
                                     features_(features),
                                     posterior_(posterior),
-                                    stats_(stats),
-                                    lambda_(lambda) { }
+                                    stats_(stats) {}
 
   void operator () () {
-    stats_->AccStatsForUtterance(extractor_, features_, posterior_, lambda_);
+    stats_->AccStatsForUtterance(extractor_, features_, posterior_);
   }
   ~IvectorTask() { }  // the destructor doesn't have to do anything.
  private:
@@ -53,7 +51,6 @@ class IvectorTask {
                                // not valid long-term.
   Posterior posterior_;  // as above.
   IvectorExtractorStats *stats_;
-  double lambda_;      // for prior regularization
 };
 
 
@@ -86,8 +83,6 @@ int main(int argc, char *argv[]) {
     stats_opts.Register(&po);
     sequencer_opts.Register(&po);
 
-    double lambda = 1.0;
-    po.Register("lambda", &lambda, "lambda for regularization");
 
     po.Read(argc, argv);
     
@@ -145,7 +140,7 @@ int main(int argc, char *argv[]) {
           continue;
         }
 
-        sequencer.Run(new IvectorTask(extractor, mat, posterior, &stats, lambda));
+        sequencer.Run(new IvectorTask(extractor, mat, posterior, &stats));
 
         tot_t += posterior.size();
         num_done++;

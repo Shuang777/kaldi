@@ -86,9 +86,6 @@ int main(int argc, char *argv[]) {
     stats_opts.Register(&po);
     sequencer_opts.Register(&po);
 
-    double lambda = 1.0;
-    po.Register("lambda", &lambda, "lambda for regularization (default = 1.0)");
-    
     int32 cv_share = 5;
     po.Register("cv-share", &cv_share, "number of cv_share (default = 5)");
     
@@ -123,7 +120,7 @@ int main(int argc, char *argv[]) {
     IvectorExtractor extractor;
     ReadKaldiObject(ivector_extractor_rxfilename, &extractor);
     
-    IvectorExtractorCVStats stats(lambda, cv_share);
+    IvectorExtractorCVStats stats(cv_share);
     
     int64 tot_t = 0;
     int32 num_done = 0, num_err = 0;
