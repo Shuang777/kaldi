@@ -159,7 +159,7 @@ class ParallelComponent : public UpdatableComponent {
     KALDI_ASSERT(offset == NumParams());
   }
   
-  void GetElements(BaseFloat* wei_copy, const std::string content) const { 
+  void GetElements(BaseFloat* wei_copy, const std::string content) { 
     KALDI_ERR << __func__ << "Not implemented!";
   }
 

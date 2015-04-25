@@ -82,7 +82,7 @@ class SentenceAveragingComponent : public UpdatableComponent {
 
   void GetParams(Vector<BaseFloat>* wei_copy) const { wei_copy->Resize(NumParams()); nnet_.GetParams(wei_copy); }
 
-  void GetElements(BaseFloat *v, const std::string content) const {
+  void GetElements(BaseFloat *v, const std::string content) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 

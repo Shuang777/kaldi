@@ -100,7 +100,7 @@ class LinearTransform : public UpdatableComponent {
     wei_copy->Range(0,linearity_num_elem).CopyRowsFromMat(Matrix<BaseFloat>(linearity_));
   }
 
-  void GetElements(BaseFloat *v, const std::string content) const {
+  void GetElements(BaseFloat *v, const std::string content) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 

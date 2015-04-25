@@ -145,14 +145,16 @@ class AffineTransform : public UpdatableComponent {
     wei_copy->Range(linearity_num_elem, bias_.Dim()).CopyFromVec(Vector<BaseFloat>(bias_));
   }
   
-  void GetElements(BaseFloat* wei_copy, const std::string content) const {
+  void GetElements(BaseFloat* wei_copy, const std::string content) {
     KALDI_ASSERT(content == "model" || content == "momentum" || content == "all" || content == "gradient");
     int32 offset = 0;
     if (content == "gradient") {
-      linearity_grad_.CopyToArray(&wei_copy[offset]);
-      offset += linearity_grad_.NumRows() * linearity_grad_.Stride();
-      bias_grad_.CopyToArray(&wei_copy[offset]);
-      offset += bias_grad_.Dim();
+      linearity_ada_.CopyToArray(&wei_copy[offset]);    // accumulated gradient, we are using ada buffer temporarily
+      offset += linearity_ada_.NumRows() * linearity_ada_.Stride();
+      bias_ada_.CopyToArray(&wei_copy[offset]);
+      offset += bias_ada_.Dim();
+      linearity_ada_.SetZero();
+      bias_ada_.SetZero();
     }
     if (content == "model" || content == "all") {
       linearity_.CopyToArray(&wei_copy[offset]);
@@ -248,6 +250,9 @@ class AffineTransform : public UpdatableComponent {
     // compute gradient
     linearity_grad_.AddMatMat(1.0, diff, kTrans, input, kNoTrans, 0.0);
     bias_grad_.AddRowSumMat(1.0, diff, 0.0);
+
+    linearity_ada_.AddMat(1.0, linearity_grad_, kNoTrans);
+    bias_ada_.AddVec(1.0, bias_grad_);
 
     num_frames_ = input.NumRows();
     UpdateComponent();

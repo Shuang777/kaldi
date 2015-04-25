@@ -244,7 +244,7 @@ class Convolutional2DComponent : public UpdatableComponent {
     wei_copy->Range(filters_num_elem, bias_.Dim()).CopyFromVec(Vector<BaseFloat>(bias_));
   }
 
-  void GetElements(BaseFloat *v, const std::string content) const {
+  void GetElements(BaseFloat *v, const std::string content) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 

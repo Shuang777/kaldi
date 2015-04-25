@@ -472,7 +472,7 @@ class AddShift : public UpdatableComponent {
     shift_data_.CopyToVec(wei_copy);
   }
 
-  void GetElements(BaseFloat* wei_copy, const std::string content) const {
+  void GetElements(BaseFloat* wei_copy, const std::string content) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
@@ -605,7 +605,7 @@ class Rescale : public UpdatableComponent {
     scale_data_.CopyToVec(wei_copy);
   }
 
-  void GetElements(BaseFloat* wei_copy, const std::string content) const {
+  void GetElements(BaseFloat* wei_copy, const std::string content) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 

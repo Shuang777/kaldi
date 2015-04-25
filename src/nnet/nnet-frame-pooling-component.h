@@ -181,7 +181,7 @@ class FramePoolingComponent : public UpdatableComponent {
     KALDI_ASSERT(offset == wei_copy->Dim());
   }
 
-  void GetElements(BaseFloat *v, const std::string content) const {
+  void GetElements(BaseFloat *v, const std::string content) {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
