@@ -30,20 +30,22 @@ namespace kaldi {
 // this class is used to run the command
 //  stats.AccStatsForUtterance(extractor, mat, posterior);
 // in parallel.
-class IvectorCVTask {
+class IvectorValidTask {
  public:
-  IvectorCVTask(const IvectorExtractor &extractor,
+  IvectorValidTask(const IvectorExtractor &extractor,
               const Matrix<BaseFloat> &features,
               const Posterior &posterior,
-              IvectorExtractorCVStats *stats): extractor_(extractor),
+              IvectorExtractorCVStats *stats,
+              double lambda): extractor_(extractor),
                                     features_(features),
                                     posterior_(posterior),
-                                    stats_(stats) {}
+                                    stats_(stats),
+                                    lambda_(lambda) {}
 
   void operator () () {
-    stats_->AccStatsForUtterance(extractor_, features_, posterior_);
+    stats_->AccValidStatsForUtterance(extractor_, features_, posterior_, lambda_);
   }
-  ~IvectorCVTask() { }  // the destructor doesn't have to do anything.
+  ~IvectorValidTask() { }  // the destructor doesn't have to do anything.
  private:
   const IvectorExtractor &extractor_;
   Matrix<BaseFloat> features_; // not a reference, since features come from a
@@ -51,6 +53,7 @@ class IvectorCVTask {
                                // not valid long-term.
   Posterior posterior_;  // as above.
   IvectorExtractorCVStats *stats_;
+  double lambda_;
 };
 
 
@@ -83,9 +86,8 @@ int main(int argc, char *argv[]) {
     stats_opts.Register(&po);
     sequencer_opts.Register(&po);
 
-    
-    int32 cv_share = 5;
-    po.Register("cv_share", &cv_share, "number of cv_share (default = 5)");
+    double lambda = -1.0;   
+    po.Register("lambda", &lambda, "Prior parameter for ivectors");
 
     po.Read(argc, argv);
     
@@ -115,13 +117,17 @@ int main(int argc, char *argv[]) {
     IvectorExtractor extractor;
     ReadKaldiObject(ivector_extractor_rxfilename, &extractor);
     
-    IvectorExtractorCVStats stats(cv_share);
+    if (lambda == -1) {   // This means it is not set by input argument
+      lambda = extractor.GetLambda();
+    }
+
+    IvectorExtractorCVStats stats;
     
     int64 tot_t = 0;
     int32 num_done = 0, num_err = 0;
     
     {
-      TaskSequencer<IvectorCVTask> sequencer(sequencer_opts);
+      TaskSequencer<IvectorValidTask> sequencer(sequencer_opts);
       
       for (; !feature_reader.Done(); feature_reader.Next()) {
         std::string key = feature_reader.Key();
@@ -141,7 +147,7 @@ int main(int argc, char *argv[]) {
           continue;
         }
 
-        sequencer.Run(new IvectorCVTask(extractor, mat, posterior, &stats));
+        sequencer.Run(new IvectorValidTask(extractor, mat, posterior, &stats, lambda));
 
         tot_t += posterior.size();
         num_done++;

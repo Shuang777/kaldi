@@ -381,6 +381,7 @@
 /src/ivectorbin/randomize-matrix
 /src/ivectorbin/ivector-check-condition-number
 /src/ivectorbin/ivector-extractor-validation
+/src/ivectorbin/ivector-extractor-stats-print
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk

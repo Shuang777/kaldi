@@ -144,6 +144,12 @@ class IvectorExtractor {
       const IvectorExtractorUtteranceStats &utt_stats,
       VectorBase<double> *mean,
       SpMatrix<double> *var) const;
+  
+  void GetIvectorDistribution(
+      const IvectorExtractorUtteranceStats &utt_stats,
+      VectorBase<double> *mean,
+      SpMatrix<double> *var,
+      const double lambda) const;
 
   void GetIvectorMinMaxEigenvalue(
       const IvectorExtractorUtteranceStats &utt_stats,
@@ -155,7 +161,8 @@ class IvectorExtractor {
   /// Get residue from regression
   double GetResidue (const IvectorExtractorUtteranceStats &utt_stats,
                      VectorBase<double> *mean,
-                     SpMatrix<double> *var) const;
+                     SpMatrix<double> *var,
+                     double lambda = -1) const;
 
   /// The distribution over iVectors, in our formulation, is not centered at
   /// zero; its first dimension has a nonzero offset.  This function returns
@@ -227,6 +234,12 @@ class IvectorExtractor {
       VectorBase<double> *linear,
       SpMatrix<double> *quadratic) const;
 
+  void GetIvectorDistPrior(
+      const IvectorExtractorUtteranceStats &utt_stats,
+      VectorBase<double> *linear,
+      SpMatrix<double> *quadratic,
+      const double lambda) const;
+
   /// Gets the linear and quadratic terms in the distribution over
   /// iVectors, that arise from the weights (if applicable).  The
   /// "mean" parameter is the iVector point that we compute
@@ -239,7 +252,7 @@ class IvectorExtractor {
       VectorBase<double> *linear,
       SpMatrix<double> *quadratic) const;
 
-  double GetLambda() { return lambda_;}
+  double GetLambda() const { return lambda_;}
   // Note: the function GetStats no longer exists due to code refactoring.
   // Instead of this->GetStats(feats, posterior, &utt_stats), call
   // utt_stats.AccStats(feats, posterior).  
@@ -665,21 +678,18 @@ class IvectorExtractorCVStats {
 
   IvectorExtractorCVStats(): log_tot_residue_(kLogZeroDouble), tot_auxf_per_frame_(0.0), tot_residue_(0.0), log_tot_avg_residue_(kLogZeroDouble), tot_avg_residue_(0.0), cv_share_(5) {}
   
-  IvectorExtractorCVStats(int32 cv_share): log_tot_residue_(kLogZeroDouble), 
-                                                          tot_auxf_per_frame_(0.0),
-                                                          tot_residue_(0.0),
-                                                          log_tot_avg_residue_(kLogZeroDouble),
-                                                          tot_avg_residue_(0.0),
-                                                          cv_share_(cv_share) { }
+  void SetCVShare(int32 cv_share) {cv_share_ = cv_share;}
   
   void AccCVStatsForUtterance(const IvectorExtractor &extractor,
                               const Matrix<BaseFloat> &feats,
                               const Posterior &post,
-                              const int32 randomize_seed);
+                              const int32 randomize_seed,
+                              double lambda = -1);
 
-  void AccStatsForUtterance(const IvectorExtractor &extractor,
+  void AccValidStatsForUtterance(const IvectorExtractor &extractor,
                             const Matrix<BaseFloat> &feats,
-                            const Posterior &post);
+                            const Posterior &post,
+                            double lambda = -1);
 
   double LogResidue() { return log_tot_residue_; }
 
@@ -707,7 +717,7 @@ class IvectorExtractorCVStats {
 
   double tot_avg_residue_;
 
-  double cv_share_;
+  int32 cv_share_;
 
   Mutex log_tot_residue_lock_;
 

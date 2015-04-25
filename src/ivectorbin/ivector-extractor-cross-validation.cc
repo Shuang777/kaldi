@@ -36,14 +36,16 @@ class IvectorCVTask {
               const Matrix<BaseFloat> &features,
               const int32 &randomize_seed,
               const Posterior &posterior,
-              IvectorExtractorCVStats *stats): extractor_(extractor),
-                                    features_(features),
-                                    randomize_seed_(randomize_seed),
-                                    posterior_(posterior),
-                                    stats_(stats) {}
+              IvectorExtractorCVStats *stats,
+              double lambda): extractor_(extractor),
+                              features_(features),
+                              randomize_seed_(randomize_seed),
+                              posterior_(posterior),
+                              stats_(stats),
+                              lambda_(lambda) {}
 
   void operator () () {
-    stats_->AccCVStatsForUtterance(extractor_, features_, posterior_, randomize_seed_);
+    stats_->AccCVStatsForUtterance(extractor_, features_, posterior_, randomize_seed_, lambda_);
   }
   ~IvectorCVTask() { }  // the destructor doesn't have to do anything.
  private:
@@ -54,6 +56,7 @@ class IvectorCVTask {
   int32 randomize_seed_;
   Posterior posterior_;  // as above.
   IvectorExtractorCVStats *stats_;
+  double lambda_;
 };
 
 
@@ -87,7 +90,10 @@ int main(int argc, char *argv[]) {
     sequencer_opts.Register(&po);
 
     int32 cv_share = 5;
-    po.Register("cv-share", &cv_share, "number of cv_share (default = 5)");
+    po.Register("cv-share", &cv_share, "Number of cv_share (default = 5)");
+
+    double lambda = -1;
+    po.Register("lambda", &lambda, "Prior parameter for ivectors");
     
     int32 randomize_seed = 777;
     po.Register("randomize-seed", &randomize_seed, "randomize seed for cross validation set randomization (default = 777)");
@@ -119,8 +125,13 @@ int main(int argc, char *argv[]) {
     
     IvectorExtractor extractor;
     ReadKaldiObject(ivector_extractor_rxfilename, &extractor);
+
+    if (lambda == -1) {   // This means it is not set by input argument
+      lambda = extractor.GetLambda();
+    }
     
-    IvectorExtractorCVStats stats(cv_share);
+    IvectorExtractorCVStats stats;
+    stats.SetCVShare(cv_share);
     
     int64 tot_t = 0;
     int32 num_done = 0, num_err = 0;
@@ -146,7 +157,7 @@ int main(int argc, char *argv[]) {
           continue;
         }
 
-        sequencer.Run(new IvectorCVTask(extractor, mat, randomize_seed, posterior, &stats));
+        sequencer.Run(new IvectorCVTask(extractor, mat, randomize_seed, posterior, &stats, lambda));
 
         tot_t += posterior.size();
         num_done++;

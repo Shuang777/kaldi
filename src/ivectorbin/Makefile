@@ -19,7 +19,8 @@ BINFILES = ivector-extractor-init ivector-extractor-acc-stats \
 					 ivector-extractor-cross-validation \
 					 ivector-extractor-validation \
 					 randomize-matrix randomize-int-vector \
-					 ivector-check-condition-number
+					 ivector-check-condition-number \
+					 ivector-extractor-stats-print
 
 OBJFILES =
 
