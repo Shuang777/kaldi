@@ -44,6 +44,12 @@ int main(int argc, char *argv[]) {
     po.Register("remove-last-layers", &remove_last_components, "Deprecated, please use --remove-last-components");
     po.Register("remove-first-components", &remove_first_components, "Remove N first Components from the Nnet");
     po.Register("remove-last-components", &remove_last_components, "Remove N last layers Components from the Nnet");
+    bool affine_to_preconditioned = false;
+    po.Register("affine-to-preconditioned", &affine_to_preconditioned, "Change AffineTransform to AffineTransformPreconditioned");
+    double alpha;
+    po.Register("alpha", &alpha, "Parameter for AffineTransformPreconditioned");
+    double max_norm;
+    po.Register("max_norm", &max_norm, "Parameter for AffineTransformPreconditioned");
 
     po.Read(argc, argv);
 
@@ -75,6 +81,10 @@ int main(int argc, char *argv[]) {
       for(int32 i=0; i<remove_last_components; i++) {
         nnet.RemoveLastComponent();
       }
+    }
+
+    if (affine_to_preconditioned) {
+      nnet.Affine2Preconditioned(max_norm, alpha);
     }
 
     // store the network

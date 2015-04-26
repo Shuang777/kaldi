@@ -102,9 +102,13 @@ class Component {
  
  /// General interface of a component  
  public:
-  Component(int32 input_dim, int32 output_dim) 
-      : input_dim_(input_dim), output_dim_(output_dim) { }
+  Component(int32 input_dim, int32 output_dim, int32 index = -1) 
+      : input_dim_(input_dim), output_dim_(output_dim), index_(index) { }
   virtual ~Component() { }
+
+  virtual void SetIndex(int32 index) { index_ = index; }
+
+  virtual int32 Index() const { return index_; }
 
   /// Copy component (deep copy).
   virtual Component* Copy() const = 0;
@@ -191,6 +195,7 @@ class Component {
  protected:
   int32 input_dim_;  ///< Size of input vectors
   int32 output_dim_; ///< Size of output vectors
+  int32 index_;
 
  private:
   /// Create new intance of component

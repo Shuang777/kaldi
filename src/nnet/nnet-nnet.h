@@ -139,6 +139,9 @@ class Nnet {
   void Write(const std::string &file, bool binary) const;
   /// Write MLP to stream 
   void Write(std::ostream &out, bool binary) const;   
+
+  /// Change AffineTransform layers to AffineTransformPreconditioned
+  void Affine2Preconditioned(double max_norm, double alpha);
   
   /// Create string with human readable description of the nnet
   std::string Info() const;

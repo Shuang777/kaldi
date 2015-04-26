@@ -56,6 +56,8 @@ resume_anneal=false
 
 transdir=
 
+clean_up=true
+
 # semi-supervised training
 supcopy=1
 semidata=
@@ -71,6 +73,11 @@ mpi_jobs=0
 frames_per_reduce=
 reduce_type=
 reduce_content=
+
+# precondition
+precondition=
+alpha=4
+max_norm=10
 
 # End configuration.
 
@@ -233,7 +240,7 @@ tmpdir=$dir/feature_shuffled; mkdir -p $tmpdir;
 copy-feats "$feats_tr" ark,scp:$tmpdir/feats.tr.ark,$dir/train.scp
 copy-feats "$feats_cv" ark,scp:$tmpdir/feats.cv.ark,$dir/cv.scp
 # remove data on exit...
-#trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
+[ "$clean_up" == true ] && trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
 
 #create a 10k utt subset for global cmvn estimates
 head -n 10000 $dir/train.scp > $dir/train.scp.10k
@@ -390,6 +397,10 @@ if [[ -z "$mlp_init" && -z "$mlp_proto" ]]; then
   fi
 fi
 
+if [ "$precondition" == precondition ]; then
+  mv $mlp_init $mlp_init.bak
+  nnet-copy --affine-to-preconditioned=true --alpha=$alpha --max-norm=$max_norm $mlp_init.bak $mlp_init
+fi
 
 ###### TRAIN ######
 if [ $mpi_jobs != 0 ]; then

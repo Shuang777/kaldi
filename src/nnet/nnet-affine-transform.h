@@ -21,11 +21,11 @@
 #ifndef KALDI_NNET_NNET_AFFINE_TRANSFORM_H_
 #define KALDI_NNET_NNET_AFFINE_TRANSFORM_H_
 
-
+#include <sstream>
 #include "nnet/nnet-component.h"
 #include "nnet/nnet-various.h"
 #include "cudamatrix/cu-math.h"
-#include "nnet/nnet-precondition-online.h"
+#include "nnet/nnet-precondition.h"
 
 namespace kaldi {
 namespace nnet1 {
@@ -123,6 +123,8 @@ class AffineTransform : public UpdatableComponent {
     linearity_.Write(os, binary);
     bias_.Write(os, binary);
   }
+
+  void SetMaxNorm(BaseFloat max_norm) { max_norm_ = max_norm; }
 
   int32 NumParams() const { return linearity_.NumRows()*linearity_.NumCols() + bias_.Dim(); }
   int32 NumElements(std::string content) const {
@@ -245,7 +247,9 @@ class AffineTransform : public UpdatableComponent {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
-
+  // Sometimes we don't want to compute grad because this might be copy from another nnet, in this scenario,
+  // we will call UpdateComponent directly.
+  // Update will compute the gradient and call UpdateComponent()
   void Update(const CuMatrixBase<BaseFloat> &input, const CuMatrixBase<BaseFloat> &diff) {
     // compute gradient
     linearity_grad_.AddMatMat(1.0, diff, kTrans, input, kNoTrans, 0.0);
@@ -354,8 +358,11 @@ class AffineTransform : public UpdatableComponent {
     return linearity_corr_;
   }
 
+  const BaseFloat GetLearnRate() const { return learn_rate_coef_; }
+  const BaseFloat GetBiasLearnRate() const { return bias_learn_rate_coef_; }
+  const int32 GetNumFrames() const {return num_frames_;}
 
- private:
+ protected:
   CuMatrix<BaseFloat> linearity_;
   CuVector<BaseFloat> bias_;
 
@@ -373,37 +380,7 @@ class AffineTransform : public UpdatableComponent {
 
   BaseFloat learn_rate_coef_;
   BaseFloat bias_learn_rate_coef_;
-  BaseFloat max_norm_;
-
-  int32 num_frames_;
-};
-/*
-// This is an idea Dan is trying out, a little bit like
-// preconditioning the update with the Fisher matrix, but the
-// Fisher matrix has a special structure.
-// [note: it is currently used in the standard recipe].
-class AffineTransformPreconditioned: public AffineTransform {
- public:
-  ComponentType GetType() const { return kAffineTransformPreconditioned; }
-
-  virtual void Read(std::istream &is, bool binary);
-  virtual void Write(std::ostream &os, bool binary) const;
-  void Init(BaseFloat learning_rate,
-            int32 input_dim, int32 output_dim,
-            BaseFloat param_stddev, BaseFloat bias_stddev,
-            BaseFloat alpha, BaseFloat max_change);
-  void Init(BaseFloat learning_rate, BaseFloat alpha,
-            BaseFloat max_change, std::string matrix_filename);
-  
-  virtual void InitFromString(std::string args);
-  virtual std::string Info() const;
-  virtual Component* Copy() const;
-  AffineTransformPreconditioned(int32 dim_in, int32 dim_out): AffineTransform(dim_in, dim_out), alpha_(1.0), max_change_(0.0) {}
-  void SetMaxChange(BaseFloat max_change) { max_change_ = max_change; }
- protected:
-  KALDI_DISALLOW_COPY_AND_ASSIGN(AffineTransformPreconditioned);
-  BaseFloat alpha_;
-  BaseFloat max_change_; // If > 0, this is the maximum amount of parameter change (in L2 norm)
+  BaseFloat max_norm_;   // If > 0, this is the maximum amount of parameter change (in L2 norm)
                          // that we allow per minibatch.  This was introduced in order to
                          // control instability.  Instead of the exact L2 parameter change,
                          // for efficiency purposes we limit a bound on the exact change.
@@ -411,20 +388,243 @@ class AffineTransformPreconditioned: public AffineTransform {
                          // A suitable value might be, for example, 10 or so; larger if there are
                          // more parameters.
 
-  /// The following function is only called if max_change_ > 0.  It returns the
+  int32 num_frames_;
+};
+
+// This is an idea Dan is trying out, a little bit like
+// preconditioning the update with the Fisher matrix, but the
+// Fisher matrix has a special structure.
+// [note: it is currently used in the standard recipe].
+class AffineTransformPreconditioned: public AffineTransform {
+ public:
+  AffineTransformPreconditioned(int32 dim_in, int32 dim_out): AffineTransform(dim_in, dim_out), alpha_(0.1) {}
+  
+  void CopyAffineTransform(const AffineTransform& trans_component, double max_norm, double alpha) {
+    linearity_ = trans_component.GetLinearity();
+    bias_ = trans_component.GetBias();
+    learn_rate_coef_ = trans_component.GetLearnRate();
+    bias_learn_rate_coef_ = GetBiasLearnRate();
+    num_frames_ = GetNumFrames();
+    alpha_ = alpha;
+    max_norm_ = max_norm;
+  }
+  
+  ComponentType GetType() const { return kAffineTransformPreconditioned; }
+
+  void ReadData(std::istream &is, bool binary) {
+    // optional learning-rate coefs
+    if ('<' == Peek(is, binary)) {
+      ExpectToken(is, binary, "<LearnRateCoef>");
+      ReadBasicType(is, binary, &learn_rate_coef_);
+      ExpectToken(is, binary, "<BiasLearnRateCoef>");
+      ReadBasicType(is, binary, &bias_learn_rate_coef_);
+    }
+    if ('<' == Peek(is, binary)) {
+      ExpectToken(is, binary, "<MaxNorm>");
+      ReadBasicType(is, binary, &max_norm_);
+    }
+    if ('<' == Peek(is, binary)) {
+      ExpectToken(is, binary, "<Alpha>");
+      ReadBasicType(is, binary, &alpha_);
+    }
+    // weights
+    linearity_.Read(is, binary);
+    bias_.Read(is, binary);
+
+    KALDI_ASSERT(linearity_.NumRows() == output_dim_);
+    KALDI_ASSERT(linearity_.NumCols() == input_dim_);
+    KALDI_ASSERT(bias_.Dim() == output_dim_);
+  }
+  void WriteData(std::ostream &os, bool binary) const {
+    WriteToken(os, binary, "<LearnRateCoef>");
+    WriteBasicType(os, binary, learn_rate_coef_);
+    WriteToken(os, binary, "<BiasLearnRateCoef>");
+    WriteBasicType(os, binary, bias_learn_rate_coef_);
+    WriteToken(os, binary, "<MaxNorm>");
+    WriteBasicType(os, binary, max_norm_);
+    WriteToken(os, binary, "<Alpha>");
+    WriteBasicType(os, binary, alpha_);
+    // weights
+    linearity_.Write(os, binary);
+    bias_.Write(os, binary);
+
+  }
+//  void Init(BaseFloat learning_rate,
+//            int32 input_dim, int32 output_dim,
+//            BaseFloat param_stddev, BaseFloat bias_stddev,
+//            BaseFloat alpha, BaseFloat max_change);
+//  void Init(BaseFloat learning_rate, BaseFloat alpha,
+//            BaseFloat max_change, std::string matrix_filename);
+  
+  void InitData(std::istream &is) {
+    // define options
+    float bias_mean = -2.0, bias_range = 2.0, param_stddev = 0.1;
+    float learn_rate_coef = 1.0, bias_learn_rate_coef = 1.0;
+    float max_norm = 0.0;
+    float alpha = 0.1;
+    // parse config
+    std::string token; 
+    while (!is.eof()) {
+      ReadToken(is, false, &token); 
+      /**/ if (token == "<ParamStddev>") ReadBasicType(is, false, &param_stddev);
+      else if (token == "<BiasMean>")    ReadBasicType(is, false, &bias_mean);
+      else if (token == "<BiasRange>")   ReadBasicType(is, false, &bias_range);
+      else if (token == "<LearnRateCoef>") ReadBasicType(is, false, &learn_rate_coef);
+      else if (token == "<BiasLearnRateCoef>") ReadBasicType(is, false, &bias_learn_rate_coef);
+      else if (token == "<MaxNorm>") ReadBasicType(is, false, &max_norm);
+      else if (token == "<Alpha>") ReadBasicType(is, false, &alpha);
+      else KALDI_ERR << "Unknown token " << token << ", a typo in config?"
+                     << " (ParamStddev|BiasMean|BiasRange|LearnRateCoef|BiasLearnRateCoef)";
+      is >> std::ws; // eat-up whitespace
+    }
+
+    //
+    // initialize
+    //
+    Matrix<BaseFloat> mat(output_dim_, input_dim_);
+    for (int32 r=0; r<output_dim_; r++) {
+      for (int32 c=0; c<input_dim_; c++) {
+        mat(r,c) = param_stddev * RandGauss(); // 0-mean Gauss with given std_dev
+      }
+    }
+    linearity_ = mat;
+    //
+    Vector<BaseFloat> vec(output_dim_);
+    for (int32 i=0; i<output_dim_; i++) {
+      // +/- 1/2*bias_range from bias_mean:
+      vec(i) = bias_mean + (RandUniform() - 0.5) * bias_range; 
+    }
+    bias_ = vec;
+    //
+    learn_rate_coef_ = learn_rate_coef;
+    bias_learn_rate_coef_ = bias_learn_rate_coef;
+    max_norm_ = max_norm;
+    alpha_ = alpha;
+  }
+
+  std::string Info() const {
+    std::string ref_str = "";
+    if (ref_component_ != NULL) {
+      const AffineTransformPreconditioned* af_component = dynamic_cast<const AffineTransformPreconditioned*> (ref_component_);
+      ref_str = "\n  ref_linearity" + MomentStatistics(af_component->GetLinearity()) +
+                "\n  ref_bias" + MomentStatistics(af_component->GetBias());
+    }
+    std::ostringstream ostr;
+    ostr << "\n  alpha " << alpha_ << "  max_norm " << max_norm_ << "  learn_rate_coef " << learn_rate_coef_
+         << " bias_learn_rate_coef_ " << bias_learn_rate_coef_;
+    return std::string("\n  linearity") + MomentStatistics(linearity_) +
+           "\n  bias" + MomentStatistics(bias_) + ostr.str() + ref_str;
+
+  }
+  std::string InfoGradient() const {
+    return std::string("\n  linearity_grad") + MomentStatistics(linearity_corr_) + 
+           ", lr-coef " + ToString(learn_rate_coef_) +
+           ", max-norm " + ToString(max_norm_) +
+           "\n  bias_grad" + MomentStatistics(bias_corr_) + 
+           ", lr-coef " + ToString(bias_learn_rate_coef_) +
+           ", alpha " + ToString(alpha_);
+  }
+ 
+
+ protected:
+  KALDI_DISALLOW_COPY_AND_ASSIGN(AffineTransformPreconditioned);
+  BaseFloat alpha_;
+    /// The following function is only called if max_change_ > 0.  It returns the
   /// greatest value alpha <= 1.0 such that (alpha times the sum over the
   /// row-index of the two matrices of the product the l2 norms of the two rows
   /// times learning_rate_)
   /// is <= max_change.
-  BaseFloat GetScalingFactor(const CuMatrix<BaseFloat> &in_value_precon,
-                             const CuMatrix<BaseFloat> &out_deriv_precon);
 
-  virtual void Update(
-      const CuMatrixBase<BaseFloat> &in_value,
-      const CuMatrixBase<BaseFloat> &out_deriv);
+  BaseFloat GetScalingFactor(const CuMatrix<BaseFloat> &in_value_precon,
+                             const CuMatrix<BaseFloat> &out_deriv_precon) {
+    static int scaling_factor_printed = 0;
+
+    KALDI_ASSERT(in_value_precon.NumRows() == out_deriv_precon.NumRows());
+    CuVector<BaseFloat> in_norm(in_value_precon.NumRows()),
+        out_deriv_norm(in_value_precon.NumRows());
+    in_norm.AddDiagMat2(1.0, in_value_precon, kNoTrans, 0.0);
+    out_deriv_norm.AddDiagMat2(1.0, out_deriv_precon, kNoTrans, 0.0);
+    // Get the actual l2 norms, not the squared l2 norm.
+    in_norm.ApplyPow(0.5);
+    out_deriv_norm.ApplyPow(0.5);
+    BaseFloat sum = learn_rate_coef_ * VecVec(in_norm, out_deriv_norm);
+    // sum is the product of norms that we are trying to limit
+    // to max_value_.
+    KALDI_ASSERT(sum == sum && sum - sum == 0.0 &&
+                 "NaN in backprop");
+    KALDI_ASSERT(sum >= 0.0);
+    if (sum <= max_norm_) return 1.0;
+    else {
+      BaseFloat ans = max_norm_ / sum;
+      if (scaling_factor_printed < 10) {
+        KALDI_LOG << "Limiting step size to " << max_norm_
+                  << " using scaling factor " << ans << ", for component index "
+                  << Index();
+        scaling_factor_printed++;
+      }
+      return ans;
+    }
+  }
+
+  void Update(const CuMatrixBase<BaseFloat> &in_value, const CuMatrixBase<BaseFloat> &out_deriv) {
+
+    const BaseFloat lr = opts_.learn_rate * learn_rate_coef_;
+    const BaseFloat lr_bias = opts_.learn_rate * bias_learn_rate_coef_;
+
+    in_value_temp.Resize(in_value.NumRows(),
+                         in_value.NumCols() + 1, kUndefined);
+    in_value_temp.Range(0, in_value.NumRows(),
+                        0, in_value.NumCols()).CopyFromMat(in_value);
+
+    // Add the 1.0 at the end of each row "in_value_temp"
+    in_value_temp.Range(0, in_value.NumRows(),
+                        in_value.NumCols(), 1).Set(1.0);
+
+    in_value_precon.Resize(in_value_temp.NumRows(),
+                           in_value_temp.NumCols(), kUndefined),
+    out_deriv_precon.Resize(out_deriv.NumRows(),
+                            out_deriv.NumCols(), kUndefined);
+    // each row of in_value_precon will be that same row of
+    // in_value, but multiplied by the inverse of a Fisher
+    // matrix that has been estimated from all the other rows,
+    // smoothed by some appropriate amount times the identity
+    // matrix (this amount is proportional to \alpha).
+    PreconditionDirectionsAlphaRescaled(in_value_temp, alpha_, &in_value_precon);
+    PreconditionDirectionsAlphaRescaled(out_deriv, alpha_, &out_deriv_precon);
+
+    BaseFloat minibatch_scale = 1.0;
+
+    if (max_norm_ > 0.0)
+      minibatch_scale = GetScalingFactor(in_value_precon, out_deriv_precon);
+
+
+    CuSubMatrix<BaseFloat> in_value_precon_part(in_value_precon,
+                                                0, in_value_precon.NumRows(),
+                                                0, in_value_precon.NumCols() - 1);
+    // this "precon_ones" is what happens to the vector of 1's representing
+    // offsets, after multiplication by the preconditioner.
+    precon_ones.Resize(in_value_precon.NumRows());
+
+    precon_ones.CopyColFromMat(in_value_precon, in_value_precon.NumCols() - 1);
+
+    BaseFloat local_lrate = minibatch_scale * lr;
+    BaseFloat local_lrate_bias = minibatch_scale * lr_bias;
+
+    bias_.AddMatVec(-local_lrate_bias, out_deriv_precon, kTrans,
+                           precon_ones, 1.0);
+    linearity_.AddMatMat(-local_lrate, out_deriv_precon, kTrans,
+                             in_value_precon_part, kNoTrans, 1.0);
+
+  }
+
+  CuMatrix<BaseFloat> in_value_temp;
+  CuMatrix<BaseFloat> in_value_precon;
+  CuMatrix<BaseFloat> out_deriv_precon;
+  CuVector<BaseFloat> precon_ones;
+
 };
 
-
+/*
 /// Keywords: natural gradient descent, NG-SGD, naturalgradient.  For
 /// the top-level of the natural gradient code look here, and also in
 /// nnet-precondition-online.h.

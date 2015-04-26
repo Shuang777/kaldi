@@ -176,10 +176,10 @@ Component* Component::NewComponentOfType(ComponentType comp_type,
     case Component::kInverseEntropy :
       ans = new InverseEntropy(input_dim, output_dim);
       break;
-/*    case Component::kAffineTransformPreconditioned :
+    case Component::kAffineTransformPreconditioned :
       ans = new AffineTransformPreconditioned(input_dim, output_dim);
       break;
-    case Component::kAffineTransformPreconditionedOnline :
+/*    case Component::kAffineTransformPreconditionedOnline :
       ans = new AffineTransformPreconditionedOnline(input_dim, output_dim);
       break;*/
     case Component::kUnknown :

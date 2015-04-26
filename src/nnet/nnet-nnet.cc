@@ -567,6 +567,17 @@ void Nnet::Write(std::ostream &os, bool binary) const {
   if(binary == false) os << std::endl;
 }
 
+void Nnet::Affine2Preconditioned(double max_norm, double alpha) {
+  for(int32 i=0; i<(int32)components_.size(); i++) {
+    if (components_[i]->GetType() == Component::kAffineTransform) {
+      AffineTransform* affine_component = dynamic_cast<AffineTransform*>(components_[i]);
+      AffineTransformPreconditioned* affine_preconditioned = new AffineTransformPreconditioned(affine_component->InputDim(), affine_component->OutputDim());
+      affine_preconditioned->CopyAffineTransform(*affine_component, max_norm, alpha);
+      components_[i] = affine_preconditioned;
+      delete affine_component;
+    }
+  }
+}
 
 std::string Nnet::Info() const {
   // global info
