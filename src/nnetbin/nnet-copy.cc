@@ -44,12 +44,22 @@ int main(int argc, char *argv[]) {
     po.Register("remove-last-layers", &remove_last_components, "Deprecated, please use --remove-last-components");
     po.Register("remove-first-components", &remove_first_components, "Remove N first Components from the Nnet");
     po.Register("remove-last-components", &remove_last_components, "Remove N last layers Components from the Nnet");
-    bool affine_to_preconditioned = false;
-    po.Register("affine-to-preconditioned", &affine_to_preconditioned, "Change AffineTransform to AffineTransformPreconditioned");
+    std::string affine_to_preconditioned = "none";
+    po.Register("affine-to-preconditioned", &affine_to_preconditioned, "Change AffineTransform to AffineTransformPreconditioned (none|simple|online) (default is none)");
     double alpha;
     po.Register("alpha", &alpha, "Parameter for AffineTransformPreconditioned");
     double max_norm;
-    po.Register("max_norm", &max_norm, "Parameter for AffineTransformPreconditioned");
+    po.Register("max-norm", &max_norm, "Parameter for AffineTransformPreconditioned");
+    int32 rank_in;
+    po.Register("rank-in", &rank_in, "Parameter for AffineTransformPreconditionedOnline");
+    int32 rank_out;
+    po.Register("rank-out", &rank_out, "Parameter for AffineTransformPreconditionedOnline");
+    int32 update_period;
+    po.Register("update-period", &update_period, "Parameter for AffineTransformPreconditionedOnline");
+    double num_samples_history;
+    po.Register("num-samples-history", &num_samples_history, "Parameter for AffineTransformPreconditionedOnline");
+    double max_change_per_sample;
+    po.Register("max-change-per-sample", &max_change_per_sample, "Parameter for AffineTransformPreconditionedOnline");
 
     po.Read(argc, argv);
 
@@ -83,8 +93,10 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    if (affine_to_preconditioned) {
+    if (affine_to_preconditioned == "simple") {
       nnet.Affine2Preconditioned(max_norm, alpha);
+    } else if (affine_to_preconditioned == "online") {
+      nnet.Affine2PreconditionedOnline(rank_in, rank_out, update_period, num_samples_history, alpha, max_change_per_sample);
     }
 
     // store the network

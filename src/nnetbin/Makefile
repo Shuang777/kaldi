@@ -33,6 +33,6 @@ TESTFILES =
 
 ADDLIBS = ../nnet/kaldi-nnet.a ../cudamatrix/kaldi-cudamatrix.a ../lat/kaldi-lat.a \
           ../hmm/kaldi-hmm.a ../tree/kaldi-tree.a ../matrix/kaldi-matrix.a \
-          ../util/kaldi-util.a ../base/kaldi-base.a 
+          ../util/kaldi-util.a ../base/kaldi-base.a ../thread/kaldi-thread.a
 
 include ../makefiles/default_rules.mk

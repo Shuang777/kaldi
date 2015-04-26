@@ -26,6 +26,7 @@
 #include "nnet/nnet-various.h"
 #include "cudamatrix/cu-math.h"
 #include "nnet/nnet-precondition.h"
+#include "nnet/nnet-precondition-online.h"
 
 namespace kaldi {
 namespace nnet1 {
@@ -624,7 +625,7 @@ class AffineTransformPreconditioned: public AffineTransform {
 
 };
 
-/*
+
 /// Keywords: natural gradient descent, NG-SGD, naturalgradient.  For
 /// the top-level of the natural gradient code look here, and also in
 /// nnet-precondition-online.h.
@@ -640,40 +641,188 @@ class AffineTransformPreconditioned: public AffineTransform {
 /// this is to ensure operations on N are atomic.
 class AffineTransformPreconditionedOnline: public AffineTransform {
  public:
+  AffineTransformPreconditionedOnline(int32 dim_in, int32 dim_out): AffineTransform(dim_in, dim_out), 
+                                                                    rank_in_(30),
+                                                                    rank_out_(80),
+                                                                    update_period_(1),
+                                                                    num_samples_history_(2000),
+                                                                    alpha_(4),
+                                                                    max_change_per_sample_(0.1) {}
+
   ComponentType GetType() const { return kAffineTransformPreconditionedOnline; }
 
-  virtual void Read(std::istream &is, bool binary);
-  virtual void Write(std::ostream &os, bool binary) const;
-  void Init(BaseFloat learning_rate,
-            int32 input_dim, int32 output_dim,
-            BaseFloat param_stddev, BaseFloat bias_stddev,
-            int32 rank_in, int32 rank_out, int32 update_period,
-            BaseFloat num_samples_history, BaseFloat alpha,
-            BaseFloat max_change_per_sample);
-  void Init(BaseFloat learning_rate, int32 rank_in,
-            int32 rank_out, int32 update_period,
-            BaseFloat num_samples_history,
-            BaseFloat alpha, BaseFloat max_change_per_sample,
-            std::string matrix_filename);
+  void ReadData(std::istream &is, bool binary) {
+    ExpectToken(is, binary, "<LearnRateCoef>");
+    ReadBasicType(is, binary, &learn_rate_coef_);
+    ExpectToken(is, binary, "<BiasLearnRateCoef>");
+    ReadBasicType(is, binary, &bias_learn_rate_coef_);
+    
+    ExpectToken(is, binary, "<RankIn>");
+    ReadBasicType(is, binary, &rank_in_);
+    
+    ExpectToken(is, binary, "<RankOut>");
+    ReadBasicType(is, binary, &rank_out_);
+    
+    ExpectToken(is, binary, "<UpdatePeriod>");
+    ReadBasicType(is, binary, &update_period_);
+    
+    ExpectToken(is, binary, "<NumSamplesHistory>");
+    ReadBasicType(is, binary, &num_samples_history_);
 
-  virtual void Resize(int32 input_dim, int32 output_dim);
+    ExpectToken(is, binary, "<Alpha>");
+    ReadBasicType(is, binary, &alpha_);
+    
+    ExpectToken(is, binary, "<MaxChangePerSample>");
+    ReadBasicType(is, binary, &max_change_per_sample_);
+    
+    // weights
+    linearity_.Read(is, binary);
+    bias_.Read(is, binary);
+
+    KALDI_ASSERT(linearity_.NumRows() == output_dim_);
+    KALDI_ASSERT(linearity_.NumCols() == input_dim_);
+    KALDI_ASSERT(bias_.Dim() == output_dim_);
+
+  }
+  void WriteData(std::ostream &os, bool binary) const {
+    WriteToken(os, binary, "<LearnRateCoef>");
+    WriteBasicType(os, binary, learn_rate_coef_);
+    WriteToken(os, binary, "<BiasLearnRateCoef>");
+    WriteBasicType(os, binary, bias_learn_rate_coef_);
+    WriteToken(os, binary, "<RankIn>");
+    WriteBasicType(os, binary, rank_in_);
+    WriteToken(os, binary, "<RankOut>");
+    WriteBasicType(os, binary, rank_out_);
+    WriteToken(os, binary, "<UpdatePeriod>");
+    WriteBasicType(os, binary, update_period_);
+    WriteToken(os, binary, "<NumSamplesHistory>");
+    WriteBasicType(os, binary, num_samples_history_);
+    WriteToken(os, binary, "<Alpha>");
+    WriteBasicType(os, binary, alpha_);
+    WriteToken(os, binary, "<MaxChangePerSample>");
+    WriteBasicType(os, binary, max_change_per_sample_);
+    // weights
+    linearity_.Write(os, binary);
+    bias_.Write(os, binary);
+  }
+
+//  void Init(BaseFloat learning_rate,
+//            int32 input_dim, int32 output_dim,
+//            BaseFloat param_stddev, BaseFloat bias_stddev,
+//            int32 rank_in, int32 rank_out, int32 update_period,
+//            BaseFloat num_samples_history, BaseFloat alpha,
+//            BaseFloat max_change_per_sample);
+//  void Init(BaseFloat learning_rate, int32 rank_in,
+//            int32 rank_out, int32 update_period,
+//            BaseFloat num_samples_history,
+//            BaseFloat alpha, BaseFloat max_change_per_sample,
+//            std::string matrix_filename);
+
+//  void Resize(int32 input_dim, int32 output_dim);
   
   // This constructor is used when converting neural networks partway through
   // training, from AffineComponent or AffineComponentPreconditioned to
   // AffineComponentPreconditionedOnline.
-  AffineTransformPreconditionedOnline(const AffineTransform &orig,
-                                      int32 rank_in, int32 rank_out,
-                                      int32 update_period,
-                                      BaseFloat eta, BaseFloat alpha);
+  void CopyAffineTransform (const AffineTransform &trans_component,
+                            int32 rank_in, int32 rank_out,
+                            int32 update_period,
+                            BaseFloat num_samples_history, BaseFloat alpha,
+                            BaseFloat max_change_per_sample) {
+    linearity_ = trans_component.GetLinearity();
+    bias_ = trans_component.GetBias();
+    learn_rate_coef_ = trans_component.GetLearnRate();
+    bias_learn_rate_coef_ = GetBiasLearnRate();
+    num_frames_ = GetNumFrames();
+    
+    rank_in_ = rank_in;
+    rank_out_ = rank_out;
+    update_period_ = update_period;
+    num_samples_history_ = num_samples_history;
+    alpha_ = alpha;
+    max_change_per_sample_ = max_change_per_sample;
+    SetPreconditionerConfigs();
+  }
   
-  virtual void InitFromString(std::string args);
-  virtual std::string Info() const;
-  virtual Component* Copy() const;
-  AffineTransformPreconditionedOnline(int32 dim_in, int32 dim_out): AffineTransform(dim_in, dim_out), max_change_per_sample_(0.0) { }
+  void InitData(std::istream &is) {
+    // define options
+    float bias_mean = -2.0, bias_range = 2.0, param_stddev = 0.1;
+    float learn_rate_coef = 1.0, bias_learn_rate_coef = 1.0;
+    int32 rank_in = 30;
+    int32 rank_out = 80;
+    int32 update_period = 1;
+    float num_samples_history = 2000.0;
+    float alpha = 0.1;
+    float max_change_per_sample = 0.1;
 
+    // parse config
+    std::string token; 
+    while (!is.eof()) {
+      ReadToken(is, false, &token); 
+      /**/ if (token == "<ParamStddev>") ReadBasicType(is, false, &param_stddev);
+      else if (token == "<BiasMean>")    ReadBasicType(is, false, &bias_mean);
+      else if (token == "<BiasRange>")   ReadBasicType(is, false, &bias_range);
+      else if (token == "<LearnRateCoef>") ReadBasicType(is, false, &learn_rate_coef);
+      else if (token == "<BiasLearnRateCoef>") ReadBasicType(is, false, &bias_learn_rate_coef);
+      else if (token == "<RankIn>") ReadBasicType(is, false, &rank_in);
+      else if (token == "<RankOut>") ReadBasicType(is, false, &rank_out);
+      else if (token == "<UpdatePeriod>") ReadBasicType(is, false, &update_period);
+      else if (token == "<NumSamplesHistory>") ReadBasicType(is, false, &num_samples_history);
+      else if (token == "<Alpha>") ReadBasicType(is, false, &alpha);
+      else if (token == "<MaxChangePerSample>") ReadBasicType(is, false, &max_change_per_sample);
+      else KALDI_ERR << "Unknown token " << token << ", a typo in config?"
+                     << " (ParamStddev|BiasMean|BiasRange|LearnRateCoef|BiasLearnRateCoef)";
+      is >> std::ws; // eat-up whitespace
+    }
+
+    //
+    // initialize
+    //
+    Matrix<BaseFloat> mat(output_dim_, input_dim_);
+    for (int32 r=0; r<output_dim_; r++) {
+      for (int32 c=0; c<input_dim_; c++) {
+        mat(r,c) = param_stddev * RandGauss(); // 0-mean Gauss with given std_dev
+      }
+    }
+    linearity_ = mat;
+    //
+    Vector<BaseFloat> vec(output_dim_);
+    for (int32 i=0; i<output_dim_; i++) {
+      // +/- 1/2*bias_range from bias_mean:
+      vec(i) = bias_mean + (RandUniform() - 0.5) * bias_range; 
+    }
+    bias_ = vec;
+    //
+    learn_rate_coef_ = learn_rate_coef;
+    bias_learn_rate_coef_ = bias_learn_rate_coef;
+    rank_in_ = rank_in;
+    rank_out_ = rank_out;
+    update_period_ = update_period;
+    num_samples_history_ = num_samples_history;
+    alpha_ = alpha;
+    max_change_per_sample_ = max_change_per_sample;
+  }
+  std::string Info() const {
+    std::string ref_str = "";
+    if (ref_component_ != NULL) {
+      const AffineTransformPreconditioned* af_component = dynamic_cast<const AffineTransformPreconditioned*> (ref_component_);
+      ref_str = "\n  ref_linearity" + MomentStatistics(af_component->GetLinearity()) +
+                "\n  ref_bias" + MomentStatistics(af_component->GetBias());
+    }
+    std::ostringstream ostr;
+    ostr << "\n  learn_rate_coef " << learn_rate_coef_
+         << " bias_learn_rate_coef " << bias_learn_rate_coef_
+         << " rank_in " << rank_in_
+         << " rank_out " << rank_out_
+         << " update_period " << update_period_
+         << " num_samples_history " << num_samples_history_
+         << " max_change_per_sample " << max_change_per_sample_;
+
+    return std::string("\n  linearity") + MomentStatistics(linearity_) +
+           "\n  bias" + MomentStatistics(bias_) + ostr.str() + ref_str;
+  }
+  
  private:
   KALDI_DISALLOW_COPY_AND_ASSIGN(AffineTransformPreconditionedOnline);
-
 
   // Configs for preconditioner.  The input side tends to be better conditioned ->
   // smaller rank needed, so make them separately configurable.
@@ -707,19 +856,106 @@ class AffineTransformPreconditionedOnline: public AffineTransform {
   /// output), which we will need to multiply into the learning rate.
   /// out_products is a pointer because we modify it in-place.
   BaseFloat GetScalingFactor(const CuVectorBase<BaseFloat> &in_products,
-                             BaseFloat gamma_prod,
-                             CuVectorBase<BaseFloat> *out_products);
+                             BaseFloat learning_rate_scale,
+                             CuVectorBase<BaseFloat> *out_products) {
+    static int scaling_factor_printed = 0;
+    int32 minibatch_size = in_products.Dim();
+
+    out_products->MulElements(in_products);
+    out_products->ApplyPow(0.5);
+    BaseFloat prod_sum = out_products->Sum();
+    BaseFloat tot_change_norm = learning_rate_scale * learn_rate_coef_ * prod_sum,
+        max_change_norm = max_change_per_sample_ * minibatch_size;
+    // tot_change_norm is the product of norms that we are trying to limit
+    // to max_value_.
+    KALDI_ASSERT(tot_change_norm - tot_change_norm == 0.0 && "NaN in backprop");
+    KALDI_ASSERT(tot_change_norm >= 0.0);
+    if (tot_change_norm <= max_change_norm) return 1.0;
+    else {
+      BaseFloat factor = max_change_norm / tot_change_norm;
+      if (scaling_factor_printed < 10) {
+        KALDI_LOG << "Limiting step size using scaling factor "
+                  << factor << ", for component index " << Index();
+        scaling_factor_printed++;
+      }
+      return factor;
+    }
+  }
 
   // Sets the configs rank, alpha and eta in the preconditioner objects,
   // from the class variables.
-  void SetPreconditionerConfigs();
+  void SetPreconditionerConfigs() {
+    preconditioner_in_.SetRank(rank_in_);
+    preconditioner_in_.SetNumSamplesHistory(num_samples_history_);
+    preconditioner_in_.SetAlpha(alpha_);
+    preconditioner_in_.SetUpdatePeriod(update_period_);
+    preconditioner_out_.SetRank(rank_out_);
+    preconditioner_out_.SetNumSamplesHistory(num_samples_history_);
+    preconditioner_out_.SetAlpha(alpha_);
+    preconditioner_out_.SetUpdatePeriod(update_period_);
+  }
 
-  virtual void Update(
-      const CuMatrixBase<BaseFloat> &in_value,
-      const CuMatrixBase<BaseFloat> &out_deriv);
+  void Update(const CuMatrixBase<BaseFloat> &in_value,
+      const CuMatrixBase<BaseFloat> &out_deriv) {
+
+    const BaseFloat lr = opts_.learn_rate * learn_rate_coef_;
+    const BaseFloat lr_bias = opts_.learn_rate * bias_learn_rate_coef_;
+
+    CuMatrix<BaseFloat> in_value_temp;
+
+    in_value_temp.Resize(in_value.NumRows(),
+                         in_value.NumCols() + 1, kUndefined);
+    in_value_temp.Range(0, in_value.NumRows(),
+                        0, in_value.NumCols()).CopyFromMat(in_value);
+
+    // Add the 1.0 at the end of each row "in_value_temp"
+    in_value_temp.Range(0, in_value.NumRows(),
+                        in_value.NumCols(), 1).Set(1.0);
+
+    CuMatrix<BaseFloat> out_deriv_temp(out_deriv);
+
+    CuMatrix<BaseFloat> row_products(2, in_value.NumRows());
+    CuSubVector<BaseFloat> in_row_products(row_products, 0),
+        out_row_products(row_products, 1);
+
+    // These "scale" values get will get multiplied into the learning rate (faster
+    // than having the matrices scaled inside the preconditioning code).
+    BaseFloat in_scale, out_scale;
+
+    preconditioner_in_.PreconditionDirections(&in_value_temp, &in_row_products,
+                                              &in_scale);
+    preconditioner_out_.PreconditionDirections(&out_deriv_temp, &out_row_products,
+                                               &out_scale);
+
+    // "scale" is a scaling factor coming from the PreconditionDirections calls
+    // (it's faster to have them output a scaling factor than to have them scale
+    // their outputs).
+    BaseFloat scale = in_scale * out_scale;
+    BaseFloat minibatch_scale = 1.0;
+
+    if (max_change_per_sample_ > 0.0)
+      minibatch_scale = GetScalingFactor(in_row_products, scale,
+                                         &out_row_products);
+
+    CuSubMatrix<BaseFloat> in_value_precon_part(in_value_temp,
+                                                0, in_value_temp.NumRows(),
+                                                0, in_value_temp.NumCols() - 1);
+    // this "precon_ones" is what happens to the vector of 1's representing
+    // offsets, after multiplication by the preconditioner.
+    CuVector<BaseFloat> precon_ones(in_value_temp.NumRows());
+
+    precon_ones.CopyColFromMat(in_value_temp, in_value_temp.NumCols() - 1);
+
+    BaseFloat local_lrate = scale * minibatch_scale * lr;
+    BaseFloat local_lrate_bias = scale * minibatch_scale * lr_bias;
+
+    bias_.AddMatVec(-local_lrate_bias, out_deriv_temp, kTrans,
+                    precon_ones, 1.0);
+    linearity_.AddMatMat(-local_lrate, out_deriv_temp, kTrans,
+                         in_value_precon_part, kNoTrans, 1.0);
+
+  }
 };
-*/
-
 
 } // namespace nnet1
 } // namespace kaldi

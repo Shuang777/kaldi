@@ -179,9 +179,9 @@ Component* Component::NewComponentOfType(ComponentType comp_type,
     case Component::kAffineTransformPreconditioned :
       ans = new AffineTransformPreconditioned(input_dim, output_dim);
       break;
-/*    case Component::kAffineTransformPreconditionedOnline :
+    case Component::kAffineTransformPreconditionedOnline :
       ans = new AffineTransformPreconditionedOnline(input_dim, output_dim);
-      break;*/
+      break;
     case Component::kUnknown :
     default :
       KALDI_ERR << "Missing type: " << TypeToMarker(comp_type);

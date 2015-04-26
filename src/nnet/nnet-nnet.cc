@@ -567,7 +567,7 @@ void Nnet::Write(std::ostream &os, bool binary) const {
   if(binary == false) os << std::endl;
 }
 
-void Nnet::Affine2Preconditioned(double max_norm, double alpha) {
+void Nnet::Affine2Preconditioned(BaseFloat max_norm, BaseFloat alpha) {
   for(int32 i=0; i<(int32)components_.size(); i++) {
     if (components_[i]->GetType() == Component::kAffineTransform) {
       AffineTransform* affine_component = dynamic_cast<AffineTransform*>(components_[i]);
@@ -577,6 +577,23 @@ void Nnet::Affine2Preconditioned(double max_norm, double alpha) {
       delete affine_component;
     }
   }
+}
+
+void Nnet::Affine2PreconditionedOnline(int32 rank_in, int32 rank_out, 
+                                       int32 update_period, BaseFloat num_samples_history,
+                                       BaseFloat alpha, BaseFloat max_change_per_sample) {
+  for(int32 i=0; i<(int32)components_.size(); i++) {
+    if (components_[i]->GetType() == Component::kAffineTransform) {
+      AffineTransform* affine_component = dynamic_cast<AffineTransform*>(components_[i]);
+      AffineTransformPreconditionedOnline* affine_preconditioned_online = new AffineTransformPreconditionedOnline(affine_component->InputDim(), affine_component->OutputDim());
+      affine_preconditioned_online->CopyAffineTransform(*affine_component, rank_in, rank_out,
+                                                 update_period, num_samples_history, 
+                                                 alpha, max_change_per_sample);
+      components_[i] = affine_preconditioned_online;
+      delete affine_component;
+    }
+  }
+
 }
 
 std::string Nnet::Info() const {

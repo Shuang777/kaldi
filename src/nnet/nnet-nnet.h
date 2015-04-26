@@ -141,7 +141,10 @@ class Nnet {
   void Write(std::ostream &out, bool binary) const;   
 
   /// Change AffineTransform layers to AffineTransformPreconditioned
-  void Affine2Preconditioned(double max_norm, double alpha);
+  void Affine2Preconditioned(BaseFloat max_norm, BaseFloat alpha);
+  void Affine2PreconditionedOnline(int32 rank_in, int32 rank_out,
+                                   int32 update_period, BaseFloat num_samples_history,
+                                   BaseFloat alpha, BaseFloat max_change_per_sample);
   
   /// Create string with human readable description of the nnet
   std::string Info() const;
