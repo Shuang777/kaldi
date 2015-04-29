@@ -198,7 +198,7 @@ int main(int argc, char *argv[]) {
     for (int32 i=0; i<multi_nnet.NumOutputObjs(); i++) {
       obj_diff[i] = new CuMatrix<BaseFloat>();
     }
-    std::vector<CuMatrix<BaseFloat>* > nnet_backout(num_features, NULL);
+    std::vector<CuMatrix<BaseFloat>* > nnet_backout(num_features, (CuMatrix<BaseFloat>*) NULL);
 
     Timer time;
     KALDI_LOG << (crossvalidate?"CROSS-VALIDATION":"TRAINING") << " STARTED";

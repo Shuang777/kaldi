@@ -1,6 +1,6 @@
 
 all:
-EXTRA_CXXFLAGS = -Wno-sign-compare
+EXTRA_CXXFLAGS = -Wno-sign-compare -I/usr/include/mpi
 include ../kaldi.mk
 
 LDFLAGS += $(CUDA_LDFLAGS)
