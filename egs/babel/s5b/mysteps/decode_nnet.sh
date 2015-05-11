@@ -31,6 +31,7 @@ max_mem=50000000 # approx. limit to memory consumption during minimization in by
 
 skip_scoring=false
 scoring_opts="--min-lmwt 4 --max-lmwt 15"
+splice_opts=
 
 num_threads=1 # if >1, will use latgen-faster-parallel
 parallel_opts="-pe smp $((num_threads+1))" # use 2 CPUs (1 DNN-forward, 1 decoder)

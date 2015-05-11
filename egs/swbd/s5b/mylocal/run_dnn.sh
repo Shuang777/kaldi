@@ -26,9 +26,8 @@ set -o pipefail
 
 # Config:
 gmmdir=exp/tri4b
-data_fmllr=data-fmllr-tri4b
 lm=tg
-traindata=data/trainori
+traindata=data/train
 stage=0 # resume training with --stage=N
 # End of config.
 . utils/parse_options.sh
@@ -41,12 +40,12 @@ if [ $stage -le 1 ]; then
   # Pre-train DBN, i.e. a stack of RBMs
   dir=exp/dnn5b_pretrain-dbn
   $cuda_cmd $dir/log/pretrain_dbn.log \
-    mysteps/pretrain_dbn.sh --rbm-iter 1 ${traindata}_nodup exp/tri4b_ali_nodup $dir
+    mysteps/pretrain_dbn.sh --rbm-iter 1 --transdir exp/tri4b_ali_nodup ${traindata}_nodup $dir
 fi
 
 if [ $stage -le 2 ]; then
   # Train the DNN optimizing per-frame cross-entropy.
-  dir=exp/dnn5b_pretrain-dbn_dnn_re2
+  dir=exp/dnn5b_pretrain-dbn_dnn
   ali=${gmmdir}_ali_nodup
   feature_transform=exp/dnn5b_pretrain-dbn/final.feature_transform
   dbn=exp/dnn5b_pretrain-dbn/6.dbn
@@ -54,7 +53,7 @@ if [ $stage -le 2 ]; then
   $cuda_cmd $dir/log/train_nnet.log \
     mysteps/train_nnet.sh --feature-transform $feature_transform --dbn $dbn --hid-layers 0 --learn-rate 0.008 \
     --resume-anneal false \
-    ${traindata}_nodup data/lang $ali $dir || exit 1;
+    ${traindata}_nodup $ali $dir || exit 1;
   # Decode (reuse HCLG graph)
   mysteps/decode_nnet.sh --nj 20 --cmd "$decode_cmd" --config conf/decode_dnn.config --acwt 0.08333 \
     --transform-dir exp/tri4b/decode_eval2000_sw1_${lm} \
@@ -64,6 +63,7 @@ if [ $stage -le 2 ]; then
 #    $dir/decode_eval2000_sw1_fsh_tg $dir/decode_eval2000_sw1_fsh_tg.3 || exit 1 
 fi
 
+exit 
 # Sequence training using sMBR criterion, we do Stochastic-GD 
 # with per-utterance updates. We use usually good acwt 0.1
 # Lattices are re-generated after 1st epoch, to get faster convergence.

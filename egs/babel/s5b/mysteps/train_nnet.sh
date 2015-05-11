@@ -29,6 +29,7 @@ delta_order=
 # feature_transform:
 splice=5         # temporal splicing
 splice_step=1    # stepsize of the splicing (1 == no gap between frames)
+splice_opts=
 feat_type=       # traps?
 # feature config (applies to feat_type traps)
 traps_dct_basis=11 # nr. od DCT basis (applies to `traps` feat_type, splice10 )
@@ -78,6 +79,11 @@ reduce_content=
 precondition=
 alpha=4
 max_norm=10
+rank_in=30
+rank_out=60
+update_period=4
+max_change_per_sample=0.075
+num_samples_history=2000
 
 # End configuration.
 
@@ -397,9 +403,14 @@ if [[ -z "$mlp_init" && -z "$mlp_proto" ]]; then
   fi
 fi
 
-if [ "$precondition" == precondition ]; then
+if [ "$precondition" == simple ]; then
   mv $mlp_init $mlp_init.bak
-  nnet-copy --affine-to-preconditioned=true --alpha=$alpha --max-norm=$max_norm $mlp_init.bak $mlp_init
+  nnet-copy --affine-to-preconditioned=$precondition --alpha=$alpha --max-norm=$max_norm $mlp_init.bak $mlp_init
+elif [ "$precondition" == online ]; then
+  mv $mlp_init $mlp_init.bak
+  nnet-copy --affine-to-preconditioned=$precondition --rank-in=$rank_in --rank-out=$rank_out --update-period=$update_period --max-change-per-sample=$max_change_per_sample --num-samples-history=$num_samples_history --alpha=$alpha $mlp_init.bak $mlp_init
+elif [ ! -z "$precondition" ]; then
+  echo "unsupported precondition type $precondition"
 fi
 
 ###### TRAIN ######

@@ -11,6 +11,8 @@ max_lmwt=10
 mbr_scale=1.0
 #end configuration section.
 
+echo "$0 $@"
+
 [ -f ./path.sh ] && . ./path.sh
 . parse_options.sh || exit 1;
 

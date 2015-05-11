@@ -61,7 +61,8 @@ typedata=${type}_${segmode}_$feattype
 [ "$segmode" == unseg ] && skip_scoring=true && skip_convert=true
 [ $langsyl == true ] && sylext=_syl && skip_scoring=true && sgmm=false && nnet=true && dnn=false && skip_convert=true         # we don't do sgmm decoding for syl mode now
 
-[[ "$langext" =~ ^_nop ]] && trainlangext="${langext}" || trainlangext=""
+[[ "$langext" =~ _nop ]] && trainlangext="${langext}" || trainlangext=""
+echo "trainlangext=$trainlangext"
 if [ $flatstart == false ]; then
   trainlangext="${trainlangext}_plpalign"
 fi

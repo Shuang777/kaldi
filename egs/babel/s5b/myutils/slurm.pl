@@ -42,7 +42,8 @@ sub roundup {
 sub signal_handler {
   print "Here it caught signal $!\n";
   for my $childpid (values %childpids) {
-    kill 'SIGINT', $childpid;
+    print "Killing child $childpid\n";
+    kill('TERM', $childpid);
   }
 }
 
@@ -163,7 +164,7 @@ for ($batchi = 0; $batchi < roundup($numjobs / $jobsperbatch); $batchi++) {
         $logfile =~ s/$jobname/$jobid/g;
       }
       $cmd="set -e; set -o pipefail; $cmd";
-      $precmd = "srun -N 1 -n 1 --msg-timeout=60 -c $threadsperjob $gpuarg $memfreearg bash";
+      $precmd = "srun -q -N 1 -n 1 --msg-timeout=60 -c $threadsperjob $gpuarg $memfreearg bash";
       system("echo $logfile");
       system("mkdir -p `dirname $logfile` 2>/dev/null");
       open(F, ">$logfile") || die "Error opening log file $logfile";

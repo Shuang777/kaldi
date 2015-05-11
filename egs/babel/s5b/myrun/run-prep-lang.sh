@@ -110,6 +110,7 @@ if [ $langwrd2syl == true ]; then
   if [[ ! -f data/local${langext}/merge_lexiconp.wrd2syl.txt || data/local${langext}/merge_lexiconp.wrd2syl.txt -ot data/local${langext}/oov_lexicon.txt ]]; then
     mylocal/map_oov_syl.sh data/local${langext} exp/map_oov_syl
     cat data/local${langext}/merge_lexiconp.wrd2syl.txt | awk '{$2="";print}' | sed 's#  #\t#' | myutils/hescii_lex.py > data/local${langext}/merge_lexiconp.wrd2syl.txt.hescii
+    grep -v '^<' data/local${langext}/seen.syl  | awk '{printf "%s\t%.1f\t%s\n",$1,0.5,$1}' | cat data/local${langext}/merge_lexiconp.wrd2syl.txt /dev/stdin  > data/local${langext}/mixed_lexiconp.wrd2syl.txt
   fi
   if [[ ! -s data/lang${langext}/Ldet.wrd2syl.fst || data/lang${langext}/Ldet.wrd2syl.fst -ot data/local${langext}/merge_lexiconp.wrd2syl.txt ]]; then
     myutils/prepare_wrd2syl_lang.sh \
