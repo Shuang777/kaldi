@@ -50,7 +50,7 @@ while ($line = <G2PLEX>) {
       }
       print REFTRN " } ($uttid)\n";
     } else {
-      die "$0: no word $w found in refLex $refLex, please check\n";
+      die "$0: no word $w found in refLex $refLex, please check. count $count\n";
     }
     $count += 1;
   } else {

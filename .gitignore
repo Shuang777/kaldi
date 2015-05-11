@@ -209,6 +209,8 @@
 /src/fgmmbin/fgmm-global-mixdown
 /src/fgmmbin/fgmm-global-gselect-to-post
 /src/fgmmbin/fgmm-global-info
+/src/fgmmbin/fgmm-gselect-post
+/src/fgmmbin/fgmm-global-dtw
 
 # /src/fstbin/
 /src/fstbin/.depend.mk
@@ -382,6 +384,7 @@
 /src/ivectorbin/ivector-check-condition-number
 /src/ivectorbin/ivector-extractor-validation
 /src/ivectorbin/ivector-extractor-stats-print
+/src/ivectorbin/ivector-compute-distance
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk

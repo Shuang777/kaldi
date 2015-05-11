@@ -50,6 +50,10 @@ subsample=1
 search_lambda=false
 cv_share=5
 compute_auxf=true
+use_bias=false
+update_variances=true
+compute_auxf=true
+cmvn=true
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -104,7 +108,9 @@ feats="ark,s,cs:copy-feats scp:$sdata/JOB/feats.scp ark:- |"
 if [ $add_delta == true ]; then
   feats=$feats" add-deltas $delta_opts ark:- ark:- |"
 fi
-feats=$feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+if [ $cmvn == true ]; then
+  feats=$feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+fi
 if [ $vad == true ]; then
   feats=$feats" select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
 fi
@@ -116,7 +122,7 @@ if [ $stage -le -2 ]; then
   $cmd $dir/log/convert.log \
     fgmm-global-to-gmm $dir/final.ubm $dir/final.dubm || exit 1;
   $cmd $dir/log/init.log \
-    ivector-extractor-init --ivector-dim=$ivector_dim --use-weights=$use_weights \
+    ivector-extractor-init --lambda=$lambda --use-bias=$use_bias --ivector-dim=$ivector_dim --use-weights=$use_weights \
      $dir/final.ubm $dir/0.ie || exit 1
 fi 
 
@@ -162,7 +168,7 @@ while [ $x -lt $num_iters ]; do
 
     Args=() # bash array of training commands for 1:nj, that put accs to stdout.
     for j in $(seq $nj_full); do
-      Args[$j]=`echo "ivector-extractor-acc-stats --num-threads=$num_threads --compute-auxf=$compute_auxf --lambda=$best_lambda --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
+      Args[$j]=`echo "ivector-extractor-acc-stats --compute-auxf=$compute_auxf --update-variances=$update_variances --num-threads=$num_threads --compute-auxf=$compute_auxf --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
     done
 
     echo "Accumulating stats (pass $x)"

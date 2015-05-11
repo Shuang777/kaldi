@@ -16,7 +16,7 @@ posterior_scale=1.0 # This scale helps to control for successve features being h
                     # correlated.  E.g. try 0.1 or 0.3.
 vad=true
 add_delta=true
-lambda=1.0
+ie=final.ie
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -45,7 +45,7 @@ srcdir=$1
 data=$2
 dir=$3
 
-for f in $srcdir/final.ie $srcdir/final.ubm $data/feats.scp ; do
+for f in $srcdir/$ie $srcdir/final.ubm $data/feats.scp ; do
   [ ! -f $f ] && echo "No such file $f" && exit 1;
 done
 
@@ -74,7 +74,7 @@ if [ $stage -le 0 ]; then
     gmm-gselect --n=$num_gselect "$dubm" "$feats" ark:- \| \
     fgmm-global-gselect-to-post --min-post=$min_post $srcdir/final.ubm "$feats" \
        ark,s,cs:- ark:- \| scale-post ark:- $posterior_scale ark:- \| \
-    ivector-extract --lambda=$lambda --verbose=2 $srcdir/final.ie "$feats" ark,s,cs:- \
+    ivector-extract --verbose=2 $srcdir/$ie "$feats" ark,s,cs:- \
       ark,scp,t:$dir/ivector.JOB.ark,$dir/ivector.JOB.scp || exit 1;
 fi
 
@@ -87,8 +87,11 @@ if [ $stage -le 2 ]; then
   # Be careful here: the speaker-level iVectors are now length-normalized,
   # even if they are otherwise the same as the utterance-level ones.
   echo "$0: computing mean of iVectors for each speaker and length-normalizing"
+  $cmd $dir/log/normalize.log \
+    ivector-normalize-length scp:$dir/ivector.scp ark,scp,t:$dir/ivector_normalized.ark,$dir/ivector_normalized.scp
+
   $cmd $dir/log/speaker_mean.log \
-    ivector-normalize-length scp:$dir/ivector.scp  ark:- \| \
+    ivector-normalize-length scp:$dir/ivector_normalized.scp  ark:- \| \
     ivector-mean ark:$data/spk2utt ark:- ark:- ark,t:$dir/num_utts.ark \| \
     ivector-normalize-length ark:- ark,scp:$dir/spk_ivector.ark,$dir/spk_ivector.scp || exit 1;
 fi

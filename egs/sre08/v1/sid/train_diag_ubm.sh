@@ -34,6 +34,7 @@ delta_window=3
 delta_order=2
 vad=true
 add_delta=true
+cmvn=true
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -102,8 +103,11 @@ if [ $add_delta == true ]; then
   all_feats=$all_feats" add-deltas $delta_opts ark:- ark:- |"
   feats=$feats" add-deltas $delta_opts ark:- ark:- |"
 fi
-all_feats=$all_feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
-feats=$feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+
+if [ $cmvn == true ]; then
+  all_feats=$all_feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+  feats=$feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+fi
 
 if [ $vad == true ]; then
   all_feats=$all_feats" select-voiced-frames ark:- scp,s,cs:$data/vad.scp ark:- |"

@@ -18,6 +18,7 @@ remove_low_count_gaussians=true # set this to false if you need #gauss to stay f
 cleanup=true
 vad=true
 add_delta=true
+cmvn=true
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -75,7 +76,9 @@ feats="ark,s,cs:copy-feats scp:$sdata/JOB/feats.scp ark:- |"
 if [ $add_delta == true ]; then
   feats=$feats" add-deltas $delta_opts ark:- ark:- |"
 fi
-feats=$feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+if [ $cmvn == true ]; then
+  feats=$feats" apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+fi
 if [ $vad == true ]; then
   feats=$feats" select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
 fi
