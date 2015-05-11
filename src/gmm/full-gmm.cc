@@ -670,6 +670,43 @@ BaseFloat FullGmm::GaussianSelection(const VectorBase<BaseFloat> &data,
   return tot_loglike;
 }
 
+BaseFloat FullGmm::GaussianSelection(const VectorBase<BaseFloat> &data,
+                                     int32 num_gselect,
+                                     std::vector<std::pair<int32, BaseFloat> > & post) const {
+  int32 num_gauss = NumGauss();
+  post.clear();
+  Vector<BaseFloat> loglikes(num_gauss, kUndefined);
+  this->LogLikelihoods(data, &loglikes);
+
+  BaseFloat thresh;
+  if (num_gselect < num_gauss) {
+    Vector<BaseFloat> loglikes_copy(loglikes);
+    BaseFloat *ptr = loglikes_copy.Data();
+    std::nth_element(ptr, ptr+num_gauss-num_gselect, ptr+num_gauss);
+    thresh = ptr[num_gauss-num_gselect];
+  } else {
+    thresh = -std::numeric_limits<BaseFloat>::infinity();
+  }
+  BaseFloat tot_posterior = 0;
+  std::vector<std::pair<BaseFloat, int32> > pairs;
+  Vector<BaseFloat> posteriors(loglikes);
+  posteriors.ApplySoftMax();
+  for (int32 p = 0; p < num_gauss; p++) {
+    if (loglikes(p) >= thresh) {
+      pairs.push_back(std::make_pair(posteriors(p), p));
+    }
+  }
+  std::sort(pairs.begin(), pairs.end(),
+            std::greater<std::pair<BaseFloat, int32> >());
+  for (int32 j = 0;
+       j < num_gselect && j < static_cast<int32>(pairs.size());
+       j++) {
+    post.push_back(std::make_pair(pairs[j].second, pairs[j].first));
+    tot_posterior += pairs[j].first;
+  }
+  return tot_posterior;
+}
+
 
 BaseFloat FullGmm::GaussianSelectionPreselect(
     const VectorBase<BaseFloat> &data,

@@ -88,6 +88,10 @@ class FullGmm {
                               int32 num_gselect,
                               std::vector<int32> *output) const;
 
+  BaseFloat GaussianSelection(const VectorBase<BaseFloat> &data,
+                              int32 num_gselect,
+                              std::vector<std::pair<int32, BaseFloat> > & post) const;
+
   /// Get gaussian selection information for one frame.  Returns log-like for
   /// this frame.  Output is the best "num_gselect" indices that were
   /// preselected, sorted from best to worst likelihood.  If "num_gselect" >

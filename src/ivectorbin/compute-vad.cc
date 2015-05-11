@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
               << num_err << " had empty features, and " << num_unvoiced
               << " were completely unvoiced.";
     KALDI_LOG << "Proportion of voiced frames was "
-              << (tot_decision / tot_length) << " over "
+              << (tot_decision / tot_length)*100 << "% over "
               << tot_length << " frames.";
     return (num_done != 0 ? 0 : 1);
   } catch(const std::exception &e) {
