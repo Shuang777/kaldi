@@ -20,7 +20,8 @@ BINFILES = ivector-extractor-init ivector-extractor-acc-stats \
 					 ivector-extractor-validation \
 					 randomize-matrix randomize-int-vector \
 					 ivector-check-condition-number \
-					 ivector-extractor-stats-print
+					 ivector-extractor-stats-print \
+					 ivector-compute-distance
 
 OBJFILES =
 
