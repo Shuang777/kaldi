@@ -13,6 +13,7 @@ mlp_init=          # select initialized MLP (override initialization)
 mlp_proto=         # select network prototype (initialize it)
 proto_opts=        # non-default options for 'make_nnet_proto.py'
 feature_transform= # provide feature transform (=splice,rescaling,...) (don't build new one)
+network_type=dnn   # (dnn,cnn1d,cnn2d,lstm)
 #
 hid_layers=4       # nr. of hidden layers (prior to sotfmax or bottleneck)
 hid_dim=1024       # select hidden dimension
@@ -23,9 +24,8 @@ init_opts=         # options, passed to the initialization script
 
 # FEATURE PROCESSING
 # feature config (applies always)
-apply_cmvn=false # apply normalization to input features?
-norm_vars=false # use variance normalization?
-delta_order=
+cmvn_opts="--norm-vars=false"
+delta_opts=
 # feature_transform:
 splice=5         # temporal splicing
 splice_step=1    # stepsize of the splicing (1 == no gap between frames)
@@ -64,7 +64,7 @@ supcopy=1
 semidata=
 semialidir=
 semitransdir=
-semi_layers=-1
+semi_layers=
 semi_cv=false   # also use semi data for cross-validation
 max_iters=20
 updatable_layers=
@@ -204,14 +204,14 @@ fi
 
 echo "$0: feature type is $feat_type"
 case $feat_type in
-  delta) feats_tr="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- | add-deltas ark:- ark:- |"
-         feats_cv="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.cv.scp ark:- | add-deltas ark:- ark:- |"
+  delta) feats_tr="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- | add-deltas $delta_opts ark:- ark:- |"
+         feats_cv="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.cv.scp ark:- | add-deltas $delta_opts ark:- ark:- |"
    ;;
-  raw) feats_tr="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- |"
-       feats_cv="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.cv.scp ark:- |"
+  raw) feats_tr="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- |"
+       feats_cv="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.cv.scp ark:- |"
    ;;
-  lda) feats_tr="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
-       feats_cv="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.cv.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
+  lda) feats_tr="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
+       feats_cv="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.cv.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
     cp $transdir/final.mat $dir
    ;;
   fmllr) feats_tr="scp:$dir/shuffle.train.scp"
@@ -388,9 +388,20 @@ if [[ -z "$mlp_init" && -z "$mlp_proto" ]]; then
   # make network prototype
   mlp_proto=$dir/nnet.proto
   echo "Genrating network prototype $mlp_proto"
-  myutils/nnet/make_nnet_proto.py $proto_opts \
-    ${bn_dim:+ --bottleneck-dim=$bn_dim} \
-    $num_fea $num_tgt $hid_layers $hid_dim >$mlp_proto || exit 1
+  case "$network_type" in
+    dnn)
+      myutils/nnet/make_nnet_proto.py $proto_opts \
+        ${bn_dim:+ --bottleneck-dim=$bn_dim} \
+        $num_fea $num_tgt $hid_layers $hid_dim >$mlp_proto || exit 1
+      ;;
+    lstm)
+      utils/nnet/make_lstm_proto.py $proto_opts \
+        $num_fea $num_tgt >$mlp_proto || exit 1 
+      ;;
+    *) echo "Unknown : --network-type $network_type" && exit 1
+  esac
+ 
+
   # initialize
   mlp_init=$dir/nnet.init; log=$dir/log/nnet_initialize.log
   echo "Initializing $mlp_proto -> $mlp_init"
@@ -426,8 +437,8 @@ mysteps/train_nnet_scheduler.sh \
   --learn-rate $learn_rate \
   --randomizer-seed $seed \
   --resume-anneal $resume_anneal \
-  --semi-layers $semi_layers \
   --max-iters $max_iters \
+  ${semi_layers:+ --semi-layers $semi_layers} \
   ${updatable_layers:+ --updatable-layers $updatable_layers} \
   ${frames_per_reduce:+ --frames-per-reduce $frames_per_reduce} \
   ${reduce_per_iter_tr:+ --reduce-per-iter-tr $reduce_per_iter_tr} \
@@ -436,7 +447,7 @@ mysteps/train_nnet_scheduler.sh \
   ${train_opts} \
   ${train_tool:+ --train-tool "$train_tool"} \
   ${config:+ --config $config} \
-  $mlp_init "$feats_tr" "$feats_cv" "$labels_tr" "$labels_cv" $dir || exit 1
+  $mlp_init "$feats_tr" "$feats_cv" "$labels_tr" "$labels_cv" $dir 
 
 
 echo "$0 successfuly finished.. $dir"

@@ -25,7 +25,8 @@ feature_transform_list=
 # learn rate scheduling
 max_iters=20
 min_iters=
-lr_schedule=halve     # halve, fixed
+lr_schedule=halve     # halve, fixed, exp
+learn_rate_shrink=0.01  # for exponential shrink of learning rate
 #start_halving_inc=0.5
 #end_halving_inc=0.1
 start_halving_impr=0.01
@@ -38,7 +39,7 @@ verbose=1
 train_tool="nnet-train-frmshuff"
 frame_weights=
 subnnet_ids=
-semi_layers=-1
+semi_layers=
 updatable_layers=
 frames_per_reduce=
 reduce_per_iter_tr=
@@ -113,6 +114,9 @@ for iter in $(seq -w $max_iters); do
 
   if [ $lr_schedule == 'fixed' ]; then
     nnet_learn_rate=$(echo $learn_rate | tr ':' ' ' | awk -v i=$iter '{if(i < NF) print $i; else print $NF}')
+  elif [ $lr_schedule == 'exp' ]; then
+    final_learn_rate=$(echo "scale=5;$learn_rate*$learn_rate_shrink" | bc)
+    nnet_learn_rate=$(perl -e '($x,$n,$i,$f)=@ARGV; $x=$x-1; $n=$n-1; print ($x >= $n ? $f : $i*exp($x*log($f/$i)/$n));' $iter $max_iters $learn_rate $final_learn_rate)
   fi
   
   # skip iteration if already done
@@ -122,7 +126,8 @@ for iter in $(seq -w $max_iters); do
   $train_tool \
    --learn-rate=$nnet_learn_rate --momentum=$momentum --l1-penalty=$l1_penalty --l2-penalty=$l2_penalty \
    --minibatch-size=$minibatch_size --randomizer-size=$randomizer_size --randomize=true --verbose=$verbose \
-   --binary=true --semi-layers=$semi_layers $frame_weights_opt \
+   --binary=true $frame_weights_opt \
+   ${semi_layers:+ --semi-layers=$semi_layers} \
    ${updatable_layers:+ --updatable-layers=$updatable_layers} \
    ${reduce_per_iter_tr:+ --max-reduce-count=$reduce_per_iter_tr} \
    ${reduce_type:+ --reduce-type=$reduce_type} \
@@ -150,7 +155,7 @@ for iter in $(seq -w $max_iters); do
 
   # accept or reject new parameters (based on objective function)
   loss_prev=$loss
-  if [ "1" == "$(awk "BEGIN{print($loss_new<$loss);}")" ] || [ $lr_schedule == "fixed" ]; then
+  if [ "1" == "$(awk "BEGIN{print($loss_new<$loss);}")" ] || [ $lr_schedule == "fixed" ] || [ $lr_schedule == "exp" ]; then
     loss=$loss_new
     mlp_best=$dir/nnet/${mlp_base}_iter${iter}_learnrate${nnet_learn_rate}_tr$(printf "%.4f" $tr_loss)_cv$(printf "%.4f" $loss_new)
     mv $mlp_next $mlp_best
