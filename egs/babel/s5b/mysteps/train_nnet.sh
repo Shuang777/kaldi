@@ -57,6 +57,7 @@ resume_anneal=false
 
 transdir=
 
+resave=true
 clean_up=true
 
 # semi-supervised training
@@ -237,16 +238,17 @@ if [ -f $transdir/raw_trans.1 ] && [ $feat_type == "raw" ]; then
 fi
 
 #get feature dim
-echo -n "Getting feature dim : "
-feat_dim=$(feat-to-dim "$feats_tr" -)
-echo $feat_dim
-
 # re-save the shuffled features, so they are stored sequentially on the disk in /tmp/
-tmpdir=$dir/feature_shuffled; mkdir -p $tmpdir; 
-copy-feats "$feats_tr" ark,scp:$tmpdir/feats.tr.ark,$dir/train.scp
-copy-feats "$feats_cv" ark,scp:$tmpdir/feats.cv.ark,$dir/cv.scp
-# remove data on exit...
-[ "$clean_up" == true ] && trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
+if [ $resave == true ]; then
+  tmpdir=$dir/feature_shuffled; mkdir -p $tmpdir; 
+  copy-feats "$feats_tr" ark,scp:$tmpdir/feats.tr.ark,$dir/train.scp
+  copy-feats "$feats_cv" ark,scp:$tmpdir/feats.cv.ark,$dir/cv.scp
+  # remove data on exit...
+  [ "$clean_up" == true ] && trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
+else
+  tmpdir=mfcc/feature_shuffled
+  cp mfcc/feature_shuffled/*.scp $dir
+fi
 
 #create a 10k utt subset for global cmvn estimates
 head -n 10000 $dir/train.scp > $dir/train.scp.10k
@@ -256,7 +258,11 @@ wc -l $dir/train.scp $dir/cv.scp
 
 ###### PREPARE FEATURE PIPELINE ######
 # filter the features
-copy-int-vector "ark:gunzip -c $alidir/ali.*.gz |" ark,t:$dir/ali.txt
+if [ $resave == true ]; then
+  copy-int-vector "ark:gunzip -c $alidir/ali.*.gz |" ark,t:$dir/ali.txt
+else 
+  cp mfcc/ali.txt $dir/ali.txt
+fi
 cat $dir/train.scp | utils/filter_scp.pl $dir/ali.txt > $dir/train.filtered.scp
 cat $dir/cv.scp | utils/filter_scp.pl $dir/ali.txt > $dir/cv.filtered.scp
 
@@ -276,8 +282,11 @@ if [ "$mpi_jobs" != 0 ]; then
   feats_tr_mpi="ark:copy-feats scp:$dir/train.MPI_RANK.scp ark:- |"
   feats_cv_mpi="ark:copy-feats scp:$dir/cv.MPI_RANK.scp ark:- |"
 
-  train_tool="mpirun -n $mpi_jobs nnet-train-frmshuff-mpi"
-  mpirun="mpirun -n 1"
+  if [[ `hostname` =~ stampede ]]; then 
+    train_tool="ibrun nnet-train-frmshuff-mpi"
+  else
+    train_tool="mpirun -n $mpi_jobs nnet-train-frmshuff-mpi"
+  fi
 fi
 
 feats_tr="ark:copy-feats scp:$dir/train.filtered.scp ark:- |"
