@@ -120,7 +120,10 @@ for iter in $(seq -w $max_iters); do
   fi
   
   # skip iteration if already done
-  [ -e $dir/.done_iter$iter ] && echo -n "skipping... " && ls $mlp_next* && continue
+  if [ -e $dir/.done_iter$iter ]; then 
+    perl -e '$line = $ARGV[0]; if ($line =~ /rejected/) { $accrej = "rejected"; } else {$accrej = "accepted";}; $line =~ /.*\/([^\/]+)/; $nnet = $1; $line =~/.*learnrate([^_]+)_tr([^_]+)_cv([^_]+)/; printf "TRAIN AVG.LOSS %.4f, (lrate%s), CROSSVAL AVG.LOSS %.4f, nnet %s (%s) skipping...\n", $2, $1, $3, $accrej, $nnet;' $mlp_next
+    continue
+  fi
   # training
   [ ! -z "$frame_weights" ] && frame_weights_opt="--frame-weights=ark:$frame_weights"
   $train_tool \
