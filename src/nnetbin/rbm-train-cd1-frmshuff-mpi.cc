@@ -73,8 +73,8 @@ int main(int argc, char *argv[]) {
     std::string use_gpu="yes";
     po.Register("use-gpu", &use_gpu, "yes|no|optional, only has effect if compiled with CUDA"); 
 
-    std::string reduce_type = "butterfly";
-    po.Register("reduce-type", &reduce_type, "Reduce strategy for MPI jobs (butterfly|allreduce|ring|hoppingring, default = butterfly)");
+    std::string reduce_type = "allreduce";
+    po.Register("reduce-type", &reduce_type, "Reduce strategy for MPI jobs (butterfly|allreduce|ring|hoppingring, default = allreduce)");
      
     int32 frames_per_reduce = 10000;
     po.Register("frames-per-reduce", &frames_per_reduce, "Number of frames per average operation on MPI (default = 10000)");

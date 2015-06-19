@@ -121,9 +121,15 @@ for iter in $(seq -w $max_iters); do
   
   # skip iteration if already done
   if [ -e $dir/.done_iter$iter ]; then 
+    mlp_next=$(ls ${mlp_next}*| tr '/' ' ' | awk '{print $NF}')
     perl -e '$line = $ARGV[0]; if ($line =~ /rejected/) { $accrej = "rejected"; } else {$accrej = "accepted";}; $line =~ /.*\/([^\/]+)/; $nnet = $1; $line =~/.*learnrate([^_]+)_tr([^_]+)_cv([^_]+)/; printf "TRAIN AVG.LOSS %.4f, (lrate%s), CROSSVAL AVG.LOSS %.4f, nnet %s (%s) skipping...\n", $2, $1, $3, $accrej, $nnet;' $mlp_next
     continue
   fi
+  iter_reduce_type=$reduce_type
+  if [ "$reduce_type" == butterfly ] && [ $iter == 1 ] ; then
+    iter_reduce_type=allreduce
+  fi
+
   # training
   [ ! -z "$frame_weights" ] && frame_weights_opt="--frame-weights=ark:$frame_weights"
   $train_tool \
@@ -133,7 +139,7 @@ for iter in $(seq -w $max_iters); do
    ${semi_layers:+ --semi-layers=$semi_layers} \
    ${updatable_layers:+ --updatable-layers=$updatable_layers} \
    ${reduce_per_iter_tr:+ --max-reduce-count=$reduce_per_iter_tr} \
-   ${reduce_type:+ --reduce-type=$reduce_type} \
+   ${iter_reduce_type:+ --reduce-type=$iter_reduce_type} \
    ${reduce_content:+ --reduce-content=$reduce_content} \
    ${frames_per_reduce:+ --frames-per-reduce=$frames_per_reduce} \
    ${feature_transform:+ --feature-transform=$feature_transform} \
