@@ -72,6 +72,7 @@ updatable_layers=
 
 # mpi training
 mpi_jobs=0
+mpi_mode=
 frames_per_reduce=
 reduce_type=
 reduce_content=
@@ -286,6 +287,15 @@ if [ "$mpi_jobs" != 0 ]; then
     train_tool="ibrun nnet-train-frmshuff-mpi"
   else
     train_tool="mpirun -n $mpi_jobs nnet-train-frmshuff-mpi"
+  fi
+  if [ $mpi_mode == simulation ]; then
+    train_tool="nnet-train-frmshuff"
+    reduce_per_iter_tr=
+    frames_per_reduce=
+    reduce_type=
+    reduce_content=
+    feats_tr_mpi="ark:copy-feats scp:$dir/train.1.scp ark:- |"
+    feats_cv_mpi="ark:copy-feats scp:$dir/cv.1.scp ark:- |"
   fi
 fi
 

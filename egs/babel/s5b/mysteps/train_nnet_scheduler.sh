@@ -126,7 +126,8 @@ for iter in $(seq -w $max_iters); do
     continue
   fi
   iter_reduce_type=$reduce_type
-  if [ "$reduce_type" == butterfly ] && [ $iter == 1 ] ; then
+  num_iter=$(echo $iter | awk '{printf "%d", $1}')
+  if [ "$reduce_type" == butterfly ] && [ $num_iter == 1 ] ; then
     iter_reduce_type=allreduce
   fi
 
