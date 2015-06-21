@@ -197,9 +197,11 @@ if [ "$mpi_jobs" != 0 ]; then
 
   feats_tr="ark:copy-feats scp:$dir/train.MPI_RANK.scp ark:- |"
 
-  rbm_train_tool="mpirun -n $mpi_jobs rbm-train-cd1-frmshuff-mpi"
-
-  mpirun="mpirun -n 1"
+  if [[ `hostname` =~ stampede ]]; then 
+    rbm_train_tool="ibrun rbm-train-cd1-frmshuff-mpi"
+  else
+    rbm_train_tool="mpirun -n $mpi_jobs rbm-train-cd1-frmshuff-mpi"
+  fi
 fi
 
 
@@ -257,7 +259,7 @@ else
   feature_transform_old=$feature_transform
   feature_transform=${feature_transform%.nnet}_cmvn-g.nnet
   echo "Renormalizing MLP input features into $feature_transform"
-  $mpirun nnet-forward --use-gpu=yes \
+  nnet-forward --use-gpu=yes \
     $feature_transform_old "$(echo $feats | sed 's|train.scp|train.scp.10k|')" \
     ark:- 2>$dir/log/cmvn_glob_fwd.log |\
   compute-cmvn-stats ark:- - | cmvn-to-nnet - - |\
@@ -310,7 +312,7 @@ for depth in $(seq 1 $nn_depth); do
     #cmvn stats for init
     echo "Computing cmvn stats '$dir/$depth.cmvn' for RBM initialization"
     if [ ! -f $dir/$depth.cmvn ]; then 
-      $mpirun nnet-forward --use-gpu=yes \
+      nnet-forward --use-gpu=yes \
        "nnet-concat $feature_transform $dir/$((depth-1)).dbn - |" \
         "$(echo $feats | sed 's|train.scp|train.scp.10k|')" \
         ark:- 2>$dir/log/cmvn_fwd.$depth.log | \
