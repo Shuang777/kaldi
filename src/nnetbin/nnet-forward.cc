@@ -30,6 +30,7 @@
 int main(int argc, char *argv[]) {
   using namespace kaldi;
   using namespace kaldi::nnet1;
+  typedef kaldi::int32 int32;  
   try {
     const char *usage =
         "Perform forward pass through Neural Network.\n"
@@ -51,8 +52,11 @@ int main(int argc, char *argv[]) {
     bool apply_log = false;
     po.Register("apply-log", &apply_log, "Transform MLP output to logscale");
 
-    std::string use_gpu="no";
-    po.Register("use-gpu", &use_gpu, "yes|no|optional, only has effect if compiled with CUDA"); 
+    std::string use_gpu = "no";
+    po.Register("use-gpu", &use_gpu, "yes|no|optional, only has effect if compiled with CUDA");
+
+    int32 frames_per_batch = INT_MAX;
+    po.Register("frames-per-batch", &frames_per_batch, "number of frames to process in each batch (default = utterance length)");
 
     po.Read(argc, argv);
 
@@ -117,6 +121,8 @@ int main(int argc, char *argv[]) {
     Matrix<BaseFloat> nnet_out_host;
 
 
+    const int32 frames_dependent = (feature_transform != "") ? nnet_transf.FramesDependent() : nnet.FramesDependent();
+
     Timer time;
     double time_now = 0;
     int32 num_done = 0;
@@ -134,25 +140,43 @@ int main(int argc, char *argv[]) {
         KALDI_ERR << "NaN or inf found in features of " << feature_reader.Key();
       }
       
-      // push it to gpu
-      feats = mat;
-      // fwd-pass
-      nnet_transf.Feedforward(feats, &feats_transf);
-      nnet.Feedforward(feats_transf, &nnet_out);
+      nnet_out_host.Resize(mat.NumRows(), nnet.OutputDim());
+
+      int32 utt_frames_per_batch = frames_per_batch > mat.NumRows() ? mat.NumRows() : frames_per_batch;
+
+      for (int32 i = 0; i < mat.NumRows(); i+= utt_frames_per_batch) {
+        int32 frame_start = std::max(i - frames_dependent, 0);
+        int32 frame_end = std::min(i + utt_frames_per_batch + frames_dependent, mat.NumRows());
+        int32 frames_this_batch_central = (i + utt_frames_per_batch > mat.NumRows()) ? mat.NumRows() - i : utt_frames_per_batch;
+
+        SubMatrix<BaseFloat> sub_mat(mat, frame_start, frame_end - frame_start, 0, mat.NumCols());
+
+        // push it to gpu
+        feats = sub_mat;
+
+        // fwd-pass
+        nnet_transf.Feedforward(feats, &feats_transf);
+        nnet.Feedforward(feats_transf, &nnet_out);
       
-      // convert posteriors to log-posteriors
-      if (apply_log) {
-        nnet_out.ApplyLog();
-      }
+        // convert posteriors to log-posteriors
+        if (apply_log) {
+          nnet_out.ApplyLog();
+        }
      
-      // subtract log-priors from log-posteriors to get quasi-likelihoods
-      if (prior_opts.class_frame_counts != "" && (no_softmax || apply_log)) {
-        pdf_prior.SubtractOnLogpost(&nnet_out);
+        // subtract log-priors from log-posteriors to get quasi-likelihoods
+        if (prior_opts.class_frame_counts != "" && (no_softmax || apply_log)) {
+          pdf_prior.SubtractOnLogpost(&nnet_out);
+        }
+        
+        CuSubMatrix<BaseFloat> nnet_out_central(nnet_out, i - frame_start, frames_this_batch_central, 0, nnet_out.NumCols());
+
+        SubMatrix<BaseFloat> sub_nnet_out_host(nnet_out_host, i, frames_this_batch_central, 0, nnet_out_host.NumCols());
+
+        //download from GPU
+        //nnet_out.CopyToMat(&sub_nnet_out_host);
+        sub_nnet_out_host.CopyFromMat(nnet_out_central);
       }
-     
-      //download from GPU
-      nnet_out_host.Resize(nnet_out.NumRows(), nnet_out.NumCols());
-      nnet_out.CopyToMat(&nnet_out_host);
+           
 
       //check for NaN/inf
       for (int32 r = 0; r < nnet_out_host.NumRows(); r++) {
