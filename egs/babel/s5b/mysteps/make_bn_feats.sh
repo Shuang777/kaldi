@@ -117,6 +117,9 @@ elif [ $feat_type == "raw" ]; then
   fi
   ###
   ###
+else
+  echo "feat_type $feat_type not supported"
+  exit 1
 fi
 
 #Run the forward pass

@@ -29,6 +29,12 @@ arguments="$@"
 . ./path.sh
 [ "$mode" == dryrun ] && echo "$0 $arguments"
 
+if [ $# -ne 2 ]; then
+  echo "Usage: $0 <latticedir> <expdir>"
+  echo " e.g.: $0 exp/train_plp_pitch_tri6_nnet_nop/decode_dev10h_uem_plp_pitch_nop/convertlat exp/train_plp_pitch_tri6_nnet_nop/decode_dev10h_uem_plp_pitch_nop/convertlat.search"
+  exit 1
+fi
+
 lattice=$1
 expdir=$2
 
