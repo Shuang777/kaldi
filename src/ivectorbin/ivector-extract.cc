@@ -23,6 +23,7 @@
 #include "gmm/am-diag-gmm.h"
 #include "ivector/ivector-extractor.h"
 #include "thread/kaldi-task-sequence.h"
+#include <algorithm>
 
 namespace kaldi {
 
@@ -30,15 +31,20 @@ namespace kaldi {
 // that this program does.  The work happens in the operator (), the
 // output happens in the destructor.
 class IvectorExtractTask {
+
+  typedef kaldi::int32 int32;
+  typedef kaldi::int64 int64;
+
  public:
   IvectorExtractTask(const IvectorExtractor &extractor,
                      std::string utt,
                      const Matrix<BaseFloat> &feats,
                      const Posterior &posterior,
                      BaseFloatVectorWriter *writer,
-                     double *tot_auxf_change):
-      extractor_(extractor), utt_(utt), feats_(feats), posterior_(posterior),
-      writer_(writer), tot_auxf_change_(tot_auxf_change) { }
+                     double *tot_auxf_change,
+                     const std::vector<bool> & selcted_parts):
+      extractor_(extractor), utt_(utt), feats_(feats), posterior_(posterior), writer_(writer), 
+      tot_auxf_change_(tot_auxf_change), selcted_parts_(selcted_parts) {}
 
   void operator () () {
     bool need_2nd_order_stats = false;
@@ -47,7 +53,7 @@ class IvectorExtractTask {
                                              extractor_.FeatDim(),
                                              need_2nd_order_stats);
       
-    utt_stats.AccStats(feats_, posterior_);
+    utt_stats.AccStats(feats_, posterior_, selcted_parts_);
     
     ivector_.Resize(extractor_.IvectorDim());
     if (extractor_.DoUsePrior())
@@ -88,6 +94,7 @@ class IvectorExtractTask {
   double *tot_auxf_change_; // if non-NULL we need the auxf change.
   Vector<double> ivector_;
   double auxf_change_;
+  std::vector<bool> selcted_parts_;
 };
 
 
@@ -119,6 +126,10 @@ int main(int argc, char *argv[]) {
                 "nonzero iVector (a potentially useful diagnostic).  Combine "
                 "with --verbose=2 for per-utterance information");
     po.Register("derived-in", &derived_in, "Read extractor with derived vars (default = false)");
+    int32 seg_parts = 1;
+    po.Register("seg-parts", &seg_parts, "Segment audio into seg-parts");
+    int32 select_parts = 1;
+    po.Register("select-parts", &select_parts, "Select these parts from segmentated audio");
 
     stats_opts.Register(&po);
     sequencer_config.Register(&po);
@@ -174,9 +185,18 @@ int main(int argc, char *argv[]) {
         }
 
         double *auxf_ptr = (compute_objf_change ? &tot_auxf_change : NULL );
+       
+        std::vector<bool> selected(seg_parts);
+        std::fill(selected.begin() + seg_parts - select_parts, selected.end(), true);
 
-        sequencer.Run(new IvectorExtractTask(extractor, key, mat, posterior,
-                                             &ivector_writer, auxf_ptr));
+        int32 count = 0;
+        do {
+          std::string utt = (seg_parts <= 1) ? key: key + "_C" + ConvertIntToString(seg_parts) + ConvertIntToString(select_parts) + "_" + ConvertIntToString(count);
+          
+          sequencer.Run(new IvectorExtractTask(extractor, utt, mat, posterior,
+                                               &ivector_writer, auxf_ptr, selected));
+          count++;
+        } while (std::next_permutation(selected.begin(), selected.end()));
                       
         tot_t += posterior.size();
         num_done++;

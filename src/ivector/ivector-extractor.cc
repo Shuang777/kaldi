@@ -849,7 +849,8 @@ void IvectorExtractor::Read(std::istream &is, bool binary, const bool read_deriv
 
 void IvectorExtractorUtteranceStats::AccStats(
     const MatrixBase<BaseFloat> &feats,
-    const Posterior &post) {
+    const Posterior &post,
+    const std::vector<bool> selected_parts) {
   typedef std::vector<std::pair<int32, BaseFloat> > VecType;  
   int32 num_frames = feats.NumRows(),
       num_gauss = X_.NumRows(),
@@ -858,7 +859,11 @@ void IvectorExtractorUtteranceStats::AccStats(
   KALDI_ASSERT(feats.NumRows() == static_cast<int32>(post.size()));
   bool update_variance = (!S_.empty());
   SpMatrix<double> outer_prod(feat_dim);
+  
   for (int32 t = 0; t < num_frames; t++) {
+    int32 part_id = t * selected_parts.size() / num_frames;
+    if (selected_parts.size() != 0 && !selected_parts[part_id]) continue;
+
     SubVector<BaseFloat> frame(feats, t);
     const VecType &this_post(post[t]);
     if (update_variance) {

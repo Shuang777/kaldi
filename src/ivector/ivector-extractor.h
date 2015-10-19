@@ -76,7 +76,7 @@ class IvectorExtractorUtteranceStats {
   }
 
   void AccStats(const MatrixBase<BaseFloat> &feats,
-                const Posterior &post);
+                const Posterior &post, const std::vector<bool> selected_parts = std::vector<bool>());
   
   void Scale(double scale); // Used to apply acoustic scale.
 

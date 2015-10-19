@@ -17,6 +17,8 @@ posterior_scale=1.0 # This scale helps to control for successve features being h
 vad=true
 add_delta=true
 ie=final.ie
+seg_parts=
+select_parts=
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -74,7 +76,8 @@ if [ $stage -le 0 ]; then
     gmm-gselect --n=$num_gselect "$dubm" "$feats" ark:- \| \
     fgmm-global-gselect-to-post --min-post=$min_post $srcdir/final.ubm "$feats" \
        ark,s,cs:- ark:- \| scale-post ark:- $posterior_scale ark:- \| \
-    ivector-extract --verbose=2 $srcdir/$ie "$feats" ark,s,cs:- \
+    ivector-extract ${seg_parts:+ --seg-parts=$seg_parts} ${select_parts:+ --select-parts=$select_parts} \
+      --verbose=2 $srcdir/$ie "$feats" ark,s,cs:- \
       ark,scp,t:$dir/ivector.JOB.ark,$dir/ivector.JOB.scp || exit 1;
 fi
 
@@ -89,9 +92,10 @@ if [ $stage -le 2 ]; then
   echo "$0: computing mean of iVectors for each speaker and length-normalizing"
   $cmd $dir/log/normalize.log \
     ivector-normalize-length scp:$dir/ivector.scp ark,scp,t:$dir/ivector_normalized.ark,$dir/ivector_normalized.scp
-
-  $cmd $dir/log/speaker_mean.log \
-    ivector-normalize-length scp:$dir/ivector_normalized.scp  ark:- \| \
-    ivector-mean ark:$data/spk2utt ark:- ark:- ark,t:$dir/num_utts.ark \| \
-    ivector-normalize-length ark:- ark,scp:$dir/spk_ivector.ark,$dir/spk_ivector.scp || exit 1;
+  if [ -z "$seg_parts" ]; then
+    $cmd $dir/log/speaker_mean.log \
+      ivector-normalize-length scp:$dir/ivector_normalized.scp  ark:- \| \
+      ivector-mean ark:$data/spk2utt ark:- ark:- ark,t:$dir/num_utts.ark \| \
+      ivector-normalize-length ark:- ark,scp:$dir/spk_ivector.ark,$dir/spk_ivector.scp || exit 1;
+  fi
 fi
