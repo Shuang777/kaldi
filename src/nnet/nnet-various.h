@@ -259,6 +259,12 @@ class Splice: public Component {
     KALDI_ERR << __func__ << "Not implemented!";
   }
 
+  int32 FramesDependent() const {
+    std::vector<int32> frame_offsets;
+    frame_offsets_.CopyToVec(&frame_offsets);
+    return std::max(frame_offsets.back(), -frame_offsets.front());
+  }
+
  protected:
   CuArray<int32> frame_offsets_;
 };

@@ -54,6 +54,7 @@ class Component {
     kLinearTransform,
     kConvolutionalComponent,
     kConvolutional2DComponent,
+    kLogisticAffine,
 
     kActivationFunction = 0x0200, 
     kSoftmax, 
@@ -131,6 +132,8 @@ class Component {
   int32 OutputDim() const { 
     return output_dim_; 
   }
+  /// Number of frames dependent on neighbors
+  virtual int32 FramesDependent() const { return 0;}
  
   /// Perform forward pass propagation Input->Output
   void Propagate(const CuMatrixBase<BaseFloat> &in, CuMatrix<BaseFloat> *out); 

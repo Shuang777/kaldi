@@ -204,6 +204,11 @@ int32 Nnet::InputDim() const {
   return components_.front()->InputDim();
 }
 
+int32 Nnet::FramesDependent() const {
+  KALDI_ASSERT(!components_.empty());
+  return components_.front()->FramesDependent();
+}
+
 const Component& Nnet::GetComponent(int32 component) const {
   KALDI_ASSERT(static_cast<size_t>(component) < components_.size());
   return *(components_[component]);
