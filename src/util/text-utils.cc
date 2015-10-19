@@ -72,6 +72,12 @@ void SplitStringToVector(const std::string &full, const char *delim,
   }
 }
 
+std::string ConvertIntToString(const int i) {
+  std::stringstream ss;  // create a stringstream
+  ss << i;  // add number to the stream
+  return ss.str();  // return a string with the contents of the stream
+}
+
 void SplitStringToBoolVector(std::string s, const std::string delim, std::vector<bool> & out_bools) {
   std::string s_copy = s;
   std::string token;

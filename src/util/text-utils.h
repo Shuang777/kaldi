@@ -55,6 +55,7 @@ void JoinVectorToString(const std::vector<std::string> &vec_in,
                         const char *delim, bool omit_empty_strings,
                         std::string *str_out);
 
+std::string ConvertIntToString(const int i);
 
 /// Split a string (e.g. 1:2:3) into a vector of integers.
 /// The delimiting char may be any character in "delim".
