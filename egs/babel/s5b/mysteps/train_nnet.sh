@@ -21,6 +21,7 @@ bn_dim=            # set a value to get a bottleneck network
 dbn=               # select DBN to prepend to the MLP initialization
 #
 init_opts=         # options, passed to the initialization script
+logistic=false     # use logistic regression on top layer (a quick fix)
 
 # FEATURE PROCESSING
 # feature config (applies always)
@@ -28,19 +29,23 @@ cmvn_opts="--norm-vars=false"
 delta_opts=
 # feature_transform:
 splice=5         # temporal splicing
+
 splice_step=1    # stepsize of the splicing (1 == no gap between frames)
-splice_opts=
+splice_opts='--left-context=3 --right-context=3'
 feat_type=       # traps?
 # feature config (applies to feat_type traps)
 traps_dct_basis=11 # nr. od DCT basis (applies to `traps` feat_type, splice10 )
 # feature config (applies to feat_type transf) (ie. LDA+MLLT, no fMLLR)
 transf=
 splice_after_transf=5
+splice_trans=true
 # feature config (applies to feat_type lda)
 lda_dim=300        # LDA dimension (applies to `lda` feat_type)
+trans_mat=
 
 # LABELS
 labels=            # use these labels to train (override deafault pdf alignments) 
+labels_cv=
 num_tgt=           # force to use number of outputs in the MLP (default is autodetect)
 
 # TRAINING SCHEDULER
@@ -52,6 +57,7 @@ train_tool=        # optionally change the training tool
 use_gpu_id= # manually select GPU id to run on, (-1 disables GPU)
 seed=777    # seed value used for training data shuffling and initialization
 cv_subset_factor=0.1
+scp_cv=
 uttbase=true    # by default, we choose last 10% utterances for CV
 resume_anneal=false
 
@@ -108,9 +114,13 @@ dir=$3
 
 [ -z "$transdir" ] && transdir=$alidir
 
-for f in $alidir/final.mdl $alidir/ali.1.gz $data/feats.scp; do
+for f in $alidir/final.mdl $data/feats.scp; do
   [ ! -f $f ] && echo "$0: no such file $f" && exit 1;
 done
+
+if [ -z "$labels" ]; then
+  [ ! -f $alidir/ali.1.gz ] && echo "$0: no such file $alidir/ali.1.gz" && exit 1;
+fi
 
 echo
 echo "# INFO"
@@ -126,16 +136,20 @@ mkdir -p $dir/{log,nnet}
 ###### PREPARE ALIGNMENTS ######
 echo
 echo "# PREPARING ALIGNMENTS"
-if [ ! -z $labels ]; then
+if [ ! -z "$labels" ]; then
   echo "Using targets '$labels' (by force)"
   labels_tr="$labels"
-  labels_cv="$labels"
+  if [ ! -z "$labels_cv" ]; then
+    labels_cv="$labels_cv"
+  else
+    labels_cv="$labels"
+  fi
 else
   echo "Using PDF targets from dirs '$alidir' '$alidir_cv'"
   # define pdf-alignment rspecifiers
   labels_tr_ali="ark:ali-to-pdf $alidir/final.mdl \"ark:gunzip -c $alidir/ali.*.gz |\" ark:- |" # for analyze-counts.
   labels_tr="ark:ali-to-pdf $alidir/final.mdl \"ark:gunzip -c $alidir/ali.*.gz |\" ark,t:- | ali-to-post ark,t:- ark:- |"
-  labels_cv="ark:ali-to-pdf $alidir/final.mdl \"ark:gunzip -c $alidir/ali.*.gz |\" ark,t:- | ali-to-post ark,t:- ark:- |"
+  labels_cv="$labels_tr"
 
   if [ ! -z $semialidir ]; then
     labels_tr_ali="ark:ali-to-pdf $alidir/final.mdl \"ark:gunzip -c $alidir/ali.*.gz $semialidir/ali.*.gz |\" ark:- |" # for analyze-counts.
@@ -152,16 +166,23 @@ fi
 
 # shuffle the list
 echo "Preparing train/cv lists :"
-num_utts_all=$(wc $data/feats.scp | awk '{print $1}')
-num_utts_subset=$(awk "BEGIN {print(int( $num_utts_all * $cv_subset_factor))}")
+if [ -z $scp_cv ]; then
+  num_utts_all=$(wc $data/feats.scp | awk '{print $1}')
+  num_utts_subset=$(awk "BEGIN {print(int( $num_utts_all * $cv_subset_factor))}")
+  echo "Split out cv feats from training data"
 
-if [ $uttbase == true ]; then
-  tail -$num_utts_subset $data/feats.scp > $dir/shuffle.cv.scp
-  cat $data/feats.scp | utils/filter_scp.pl --exclude $dir/shuffle.cv.scp | utils/shuffle_list.pl --srand ${seed:-777} > $dir/shuffle.train.scp
+  if [ $uttbase == true ]; then
+    tail -$num_utts_subset $data/feats.scp > $dir/shuffle.cv.scp
+    cat $data/feats.scp | utils/filter_scp.pl --exclude $dir/shuffle.cv.scp | utils/shuffle_list.pl --srand ${seed:-777} > $dir/shuffle.train.scp
+  else
+    cat $data/feats.scp | utils/shuffle_list.pl --srand ${seed:-777} > $dir/shuffle.scp
+    head -$num_utts_subset $dir/shuffle.scp > $dir/shuffle.cv.scp
+    cat $dir/shuffle.scp | utils/filter_scp.pl --exclude $dir/shuffle.cv.scp > $dir/shuffle.train.scp
+  fi
 else
-  cat $data/feats.scp | utils/shuffle_list.pl --srand ${seed:-777} > $dir/shuffle.scp
-  head -$num_utts_subset $dir/shuffle.scp > $dir/shuffle.cv.scp
-  cat $dir/shuffle.scp | utils/filter_scp.pl --exclude $dir/shuffle.cv.scp > $dir/shuffle.train.scp
+  echo "Using cv feats from argument"
+  cat $data/feats.scp | utils/shuffle_list.pl > $dir/shuffle.train.scp
+  cat $scp_cv | utils/shuffle_list.pl > $dir/shuffle.cv.scp
 fi
 
 if [ ! -z "$semidata" ]; then
@@ -217,6 +238,15 @@ case $feat_type in
     cp $transdir/final.mat $dir
    ;;
   fmllr) feats_tr="scp:$dir/shuffle.train.scp"
+         feats_cv="scp:$dir/shuffle.cv.scp"
+   ;;
+  traps) feats_tr="scp:$dir/shuffle.train.scp"
+         feats_cv="scp:$dir/shuffle.cv.scp"
+   ;;
+  iveclda)
+    [ -z $transmat ] && echo "please provide trans_mat for iveclad feature" && exit 1
+    feats_tr="ark:ivector-transform $transmat scp:$dir/shuffle.train.scp ark:- | ivector-normalize-length ark:- ark:- |"
+    feats_cv="ark:ivector-transform $transmat scp:$dir/shuffle.cv.scp ark:- | ivector-normalize-length ark:- ark:- |"
    ;;
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
@@ -247,33 +277,28 @@ if [ $resave == true ]; then
   # remove data on exit...
   [ "$clean_up" == true ] && trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
 else
-  tmpdir=mfcc/feature_shuffled
-  cp mfcc/feature_shuffled/*.scp $dir
+  [ -f $dir/train.scp ] && rm -f $dir/train.scp
+  [ -f $dir/cv.scp ] && rm -f $dir/cv.scp
+  (cd $dir; ln -s shuffle.train.scp train.scp; ln -s shuffle.cv.scp cv.scp)
 fi
-
-#create a 10k utt subset for global cmvn estimates
-head -n 10000 $dir/train.scp > $dir/train.scp.10k
 
 # print the list sizes
 wc -l $dir/train.scp $dir/cv.scp
 
 ###### PREPARE FEATURE PIPELINE ######
 # filter the features
-if [ $resave == true ]; then
-  copy-int-vector "ark:gunzip -c $alidir/ali.*.gz |" ark,t:$dir/ali.txt
-else 
-  cp mfcc/ali.txt $dir/ali.txt
-fi
-cat $dir/train.scp | utils/filter_scp.pl $dir/ali.txt > $dir/train.filtered.scp
-cat $dir/cv.scp | utils/filter_scp.pl $dir/ali.txt > $dir/cv.filtered.scp
+copy-post "$labels_tr" "ark,t:|awk '{print \$1}'" > $dir/ali_train.txt
+copy-post "$labels_cv" "ark,t:|awk '{print \$1}'" > $dir/ali_cv.txt
+cat $dir/train.scp | utils/filter_scp.pl $dir/ali_train.txt > $dir/filtered.train.scp
+cat $dir/cv.scp | utils/filter_scp.pl $dir/ali_cv.txt > $dir/filtered.cv.scp
 
 if [ "$mpi_jobs" != 0 ]; then
-  min_frames_tr=$(feat-to-len scp:$dir/train.filtered.scp ark,t:- | sort -k2 -n -r | myutils/distribute_scp.pl $mpi_jobs $dir/train_list)
-  min_frames_cv=$(feat-to-len scp:$dir/cv.filtered.scp ark,t:- | sort -k2 -n -r | myutils/distribute_scp.pl $mpi_jobs $dir/cv_list)
+  min_frames_tr=$(feat-to-len scp:$dir/filtered.train.scp ark,t:- | sort -k2 -n -r | myutils/distribute_scp.pl $mpi_jobs $dir/train_list)
+  min_frames_cv=$(feat-to-len scp:$dir/filtered.cv.scp ark,t:- | sort -k2 -n -r | myutils/distribute_scp.pl $mpi_jobs $dir/cv_list)
 
   for n in $(seq $mpi_jobs); do
-    cat $dir/train.filtered.scp | utils/filter_scp.pl $dir/train_list.$n.scp > $dir/train.$n.scp
-    cat $dir/cv.filtered.scp | utils/filter_scp.pl $dir/cv_list.$n.scp > $dir/cv.$n.scp
+    cat $dir/filtered.train.scp | utils/filter_scp.pl $dir/train_list.$n.scp > $dir/train.$n.scp
+    cat $dir/filtered.cv.scp | utils/filter_scp.pl $dir/cv_list.$n.scp > $dir/cv.$n.scp
   done
 
   reduce_per_iter_tr=$(echo $min_frames_tr/$frames_per_reduce | bc)
@@ -299,10 +324,13 @@ if [ "$mpi_jobs" != 0 ]; then
   fi
 fi
 
-feats_tr="ark:copy-feats scp:$dir/train.filtered.scp ark:- |"
-feats_cv="ark:copy-feats scp:$dir/cv.filtered.scp ark:- |"
+feats_tr="ark:copy-feats scp:$dir/filtered.train.scp ark:- |"
+feats_cv="ark:copy-feats scp:$dir/filtered.cv.scp ark:- |"
 echo substituting feats_tr with $feats_tr
 echo substituting feats_cv with $feats_cv
+
+#create a 10k utt subset for global cmvn estimates
+head -n 10000 $dir/filtered.train.scp > $dir/filtered.train.scp.10k
 
 # get feature dim
 echo "Getting feature dim : "
@@ -322,7 +350,7 @@ if [ ! -z "$feature_transform" ]; then
   echo "Using pre-computed feature-transform : '$feature_transform'"
   tmp=$dir/$(basename $feature_transform) 
   cp $feature_transform $tmp; feature_transform=$tmp
-else
+elif [ "$splice_transform" == true ]; then
   # Generate the splice transform
   echo "Using splice +/- $splice , step $splice_step"
   feature_transform=$dir/tr_splice$splice-$splice_step.nnet
@@ -360,6 +388,12 @@ else
     lda)
       echo "LDA transform applied already!";
     ;;
+    fmllr)
+      echo "Fmllr same as plain";
+    ;;
+    iveclda)
+      echo "LDA transform already applied!";
+    ;;
     *)
       echo "Unknown feature type $feat_type"
       exit 1;
@@ -377,6 +411,11 @@ else
     ark:- 2>$dir/log/nnet-forward-cmvn.log |\
   compute-cmvn-stats ark:- - | cmvn-to-nnet - - |\
   nnet-concat --binary=false $feature_transform_old - $feature_transform
+else
+  # raw input
+  feature_transform=$dir/cmvn-g.nnet
+  compute-cmvn-stats "$(echo $feats_tr | sed 's|train.scp|train.scp.10k|')" - |\
+  cmvn-to-nnet --binary=false - $feature_transform
 fi
 
 ###### MAKE LINK TO THE FINAL feature_transform, so the other scripts will find it ######
@@ -419,7 +458,11 @@ if [[ -z "$mlp_init" && -z "$mlp_proto" ]]; then
       ;;
     *) echo "Unknown : --network-type $network_type" && exit 1
   esac
- 
+
+  if [ "$logistic" == true ]; then
+    echo "fixing proto with logistic layer"
+    myutils/logistic_regression_fix.pl $hid_layers $mlp_proto
+  fi
 
   # initialize
   mlp_init=$dir/nnet.init; log=$dir/log/nnet_initialize.log
