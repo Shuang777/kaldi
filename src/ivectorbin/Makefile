@@ -21,7 +21,9 @@ BINFILES = ivector-extractor-init ivector-extractor-acc-stats \
 					 randomize-matrix randomize-int-vector \
 					 ivector-check-condition-number \
 					 ivector-extractor-stats-print \
-					 ivector-compute-distance
+					 ivector-compute-distance \
+					 ivector-prep-pairs ivector-compute-dot-distance \
+					 ivector-prep-product
 
 OBJFILES =
 

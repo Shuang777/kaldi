@@ -273,6 +273,7 @@ class AffineTransform : public UpdatableComponent {
     // we will also need the number of frames in the mini-batch
 
     if (opts_.momentum < 0) {
+      // use this for adagrad temporarily
       linearity_grad_square_.CopyFromMat(linearity_grad_);
       bias_grad_square_.CopyFromVec(bias_grad_);
       linearity_grad_square_.MulElements(linearity_grad_square_);
@@ -955,6 +956,90 @@ class AffineTransformPreconditionedOnline: public AffineTransform {
                          in_value_precon_part, kNoTrans, 1.0);
 
   }
+};
+
+class LogisticAffine : public AffineTransform {
+  public:
+  LogisticAffine(int32 dim_in, int32 dim_out) 
+    : AffineTransform(dim_in, dim_out) { 
+    KALDI_ASSERT(dim_out == 2);
+  }
+  ~LogisticAffine()
+  { }
+
+  Component* Copy() const { return new LogisticAffine(*this); }
+  ComponentType GetType() const { return kLogisticAffine; }
+  
+  void Update(const CuMatrixBase<BaseFloat> &input, const CuMatrixBase<BaseFloat> &diff) {
+    // compute gradient
+    linearity_grad_.AddMatMat(1.0, diff, kTrans, input, kNoTrans, 0.0);
+    bias_grad_.AddRowSumMat(1.0, diff, 0.0);
+
+    linearity_ada_.AddMat(1.0, linearity_grad_, kNoTrans);
+    bias_ada_.AddVec(1.0, bias_grad_);
+
+    num_frames_ = input.NumRows();
+    UpdateComponent();
+  }
+
+  void UpdateComponent()  {
+    // we use following hyperparameters from the option class
+    const BaseFloat lr = opts_.learn_rate * learn_rate_coef_;
+    const BaseFloat lr_bias = opts_.learn_rate * bias_learn_rate_coef_;
+    const BaseFloat mmt = opts_.momentum < 0 ? 0 - opts_.momentum : opts_.momentum;
+    const BaseFloat l2 = opts_.l2_penalty;
+    const BaseFloat l1 = opts_.l1_penalty;
+    // we will also need the number of frames in the mini-batch
+
+    // include momentum
+    linearity_corr_.Scale(mmt);
+    linearity_corr_.AddMat(1.0 - mmt, linearity_grad_, kNoTrans);
+    bias_corr_.Scale(mmt);
+    bias_corr_.AddVec(1.0 - mmt, bias_grad_);
+
+    // l2 regularization
+    if (l2 != 0.0) {
+      linearity_.AddMat(-lr*l2*num_frames_, linearity_);
+      if (ref_component_ != NULL) {
+        const AffineTransform* af_component = dynamic_cast<const AffineTransform*> (ref_component_);
+        linearity_.AddMat(lr*l2*num_frames_, af_component->GetLinearity());
+      }
+    }
+    // l1 regularization
+    if (l1 != 0.0) {
+      cu::RegularizeL1(&linearity_, &linearity_corr_, lr*l1*num_frames_, lr);
+    }
+    // update
+    linearity_.AddMat(-lr, linearity_corr_);
+    bias_.AddVec(-lr_bias, bias_corr_);
+    // max-norm
+    if (max_norm_ > 0.0) {
+      CuMatrix<BaseFloat> lin_sqr(linearity_);
+      lin_sqr.MulElements(linearity_);
+      CuVector<BaseFloat> l2(OutputDim());
+      l2.AddColSumMat(1.0, lin_sqr, 0.0);
+      l2.ApplyPow(0.5); // we have per-neuron L2 norms
+      CuVector<BaseFloat> scl(l2);
+      scl.Scale(1.0/max_norm_);
+      scl.ApplyFloor(1.0);
+      scl.InvertElements();
+      linearity_.MulRowsVec(scl); // shink to sphere!
+    }
+    CuSubVector<BaseFloat> weight_row0(linearity_, 0);
+    weight_row0.Set(0);
+    CuSubVector<BaseFloat> bias_0(bias_, 0, 1);
+    bias_0.Set(0);
+  }
+
+  void InitData(std::istream &is) {
+    // define options
+    AffineTransform::InitData(is);
+    CuSubVector<BaseFloat> weight_row0(linearity_, 0);
+    weight_row0.Set(0);
+    CuSubVector<BaseFloat> bias_0(bias_, 0, 1);
+    bias_0.Set(0);
+  }
+
 };
 
 } // namespace nnet1
