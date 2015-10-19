@@ -19,7 +19,11 @@
 # run them in parallel and write log to some.log.xx
 # note that current script restrict jobs perbatch to be less than or equal to 64
 
+use POSIX ":sys_wait_h";
+
 @ARGV < 2 && die "usage: slurm.pl log-file command-line arguments...";
+
+$SIG{INT}  = \&signal_handler;
 
 $totaljobstart=1;
 $totaljobend=1;
@@ -28,16 +32,28 @@ $jobsperbatch=0;
 $gpuarg = '';
 $memfreearg = '';
 $mode = 'cmdline';	# 'cmdline' is the default mode
+%childpids = ();
+$killmode = "strict";
 
 sub roundup {
   my $n = shift;
   return(($n == int($n)) ? $n: int($n+1))
 }
 
+sub signal_handler {
+  print "Here it caught signal $!\n";
+  for my $childpid (values %childpids) {
+    print "Killing child $childpid\n";
+    kill('TERM', $childpid);
+  }
+}
+
 if (@ARGV > 0) {
   while (@ARGV >= 2 && $ARGV[0] =~ m:^-:){ # parse any options
     $switch = shift @ARGV;
     if ($switch eq '-tc'){
+      $jobsperbatch = shift @ARGV;
+    } elsif ($switch eq '--max-jobs-run') {
       $jobsperbatch = shift @ARGV;
     } elsif ($switch eq '-pe'){
       $indicator = shift @ARGV;
@@ -47,6 +63,8 @@ if (@ARGV > 0) {
       } else {
         $threadsperjob = shift @ARGV;
       }
+    } elsif ($switch eq '--num-threads'){
+      $threadsperjob = shift @ARGV;
     } elsif ($switch eq '-l'){
       $specifications = shift @ARGV;
       @specifics = split(/,/, $specifications);
@@ -54,7 +72,7 @@ if (@ARGV > 0) {
         $thisspec = shift @specifics;
         @argdetail = split(/=/, $thisspec);
         if ($argdetail[0] eq 'gpu') {
-          $gpuarg = "--gres=gpu:$argdetail[1]";
+          $gpuarg = "--gres=gpu:$argdetail[1] -x kajiki[1-4]";
         } elsif ($argdetail[0] eq 'mem_free') {
           $memnumber = $argdetail[1];
           if ($memnumber =~ /^(\d+)\.?(\d*)G$/){
@@ -76,6 +94,8 @@ if (@ARGV > 0) {
           exit(1);
         }
       }
+    } elsif ($switch eq '--loose') {
+      $killmode = "loose";
     }
   }
 
@@ -107,7 +127,8 @@ if (@ARGV > 0) {
   if ($jobsperbatch == 0){
     $jobsperbatch = $totaljobend - $totaljobstart + 1;
   }
-}
+}   # parse argument done
+
 if ($jobsperbatch > 64) {
   print STDERR "Warning: jobs per batch restricted to 64\n";
   $jobsperbatch = 64;
@@ -132,58 +153,100 @@ if ($mode eq 'cmdline') {
 }
 
 $numjobs = ($totaljobend - $totaljobstart + 1);
+
 for ($batchi = 0; $batchi < roundup($numjobs / $jobsperbatch); $batchi++) {
-$jobstart = $totaljobstart + $jobsperbatch * $batchi;
-$jobend = $totaljobstart + $jobsperbatch * ($batchi + 1) - 1;
-if ($jobend > $totaljobend){
-  $jobend = $totaljobend;
-}
-for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
-  $childpid = fork();
-  if (!defined $childpid) { die "Error forking in slurm.pl (writing to $logfile)"; }
-  if ($childpid == 0) { # We're in the child... this branch
-    # executes the job and returns (possibly with an error status).
-    if ($mode eq "script") {
-      $cmd = $cmds[$jobid-1];
-      $logfile = $logfile . '.' . $jobid;
-    } elsif (defined $jobname) { 
-      $cmd =~ s/$jobname/$jobid/g;
-      $logfile =~ s/$jobname/$jobid/g;
-    }
-    $cmd="set -e; set -o pipefail; $cmd";
-    $precmd = "srun -N 1 -n 1 --msg-timeout=60 -c $threadsperjob $gpuarg $memfreearg bash";
-    system("echo $logfile");
-    system("mkdir -p `dirname $logfile` 2>/dev/null");
-    open(F, ">$logfile") || die "Error opening log file $logfile";
-    print F "# " . $precmd . "\n";
-    print F "# " . $cmd . "\n";
-    print F "# Started at " . `date`;
-    $starttime = `date +'%s'`;
-    print F "#\n";
-    close(F);
-
-    # Pipe into bash.. make sure we're not using any other shell.
-    open(B, "|-", "$precmd") || die "Error opening shell command"; 
-    print B "( " . $cmd . ") 2>>$logfile >> $logfile";
-    close(B);                   # If there was an error, exit status is in $?
-    $ret = $?;
-
-    $endtime = `date +'%s'`;
-    open(F, ">>$logfile") || die "Error opening log file $logfile (again)";
-    $enddate = `date`;
-    chop $enddate;
-    print F "# Ended (code $ret) at " . $enddate . ", elapsed time " . ($endtime-$starttime) . " seconds\n";
-    close(F);
-    exit($ret == 0 ? 0 : 1);
+  $jobstart = $totaljobstart + $jobsperbatch * $batchi;
+  $jobend = $totaljobstart + $jobsperbatch * ($batchi + 1) - 1;
+  if ($jobend > $totaljobend){
+    $jobend = $totaljobend;
   }
-}
+  for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
+    $childpid = fork();
+    if (!defined $childpid) { die "Error forking in slurm.pl (writing to $logfile)"; }
+    if ($childpid == 0) { # We're in the child... this branch
+      # executes the job and returns (possibly with an error status).
+      if ($mode eq "script") {
+        $cmd = $cmds[$jobid-1];
+        $logfile = $logfile . '.' . $jobid;
+      } elsif (defined $jobname) { 
+        $cmd =~ s/$jobname/$jobid/g;
+        $logfile =~ s/$jobname/$jobid/g;
+      }
+      $cmd="set -e; set -o pipefail; $cmd";
+      $precmd = "srun -q -N 1 -n 1 --msg-timeout=60 -c $threadsperjob $gpuarg $memfreearg bash";
+      system("echo $logfile");
+      system("mkdir -p `dirname $logfile` 2>/dev/null");
+      open(F, ">$logfile") || die "Error opening log file $logfile";
+      print F "# " . $precmd . "\n";
+      print F "# " . $cmd . "\n";
+      print F "# Started at " . `date`;
+      $starttime = `date +'%s'`;
+      print F "#\n";
+      close(F);
 
-$ret = 0;
-$numfail = 0;
-for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
-  $r = wait();
-  if ($r == -1) { die "Error waiting for child process"; } # should never happen.
-  if ($? != 0) { $numfail++; $ret = 1; } # The child process failed.
+      # Pipe into bash.. make sure we're not using any other shell.
+      open(B, "|-", "$precmd") || die "Error opening shell command"; 
+      print B "( " . $cmd . ") 2>>$logfile >> $logfile";
+      close(B);                   # If there was an error, exit status is in $?
+      $ret = $?;
+
+      $endtime = `date +'%s'`;
+      open(F, ">>$logfile") || die "Error opening log file $logfile (again)";
+      $enddate = `date`;
+      chop $enddate;
+      print F "# Ended (code $ret) at " . $enddate . ", elapsed time " . ($endtime-$starttime) . " seconds\n";
+      close(F);
+      exit($ret);
+    } else {
+      $childpids{$jobid} = $childpid;
+    }
+  }
+
+  $ret = 0;
+  $numfail = 0;
+
+  if ($killmode eq "strict") {
+    while (1) {
+      foreach my $jobid (keys %childpids) {
+        my $res = waitpid($childpids{$jobid}, WNOHANG);
+        if ($res == $childpids{$jobid}){
+          # this job done
+          delete $childpids{$jobid};    # At least this job is done
+          $numfail++;
+          $thislogfile = $logfile;
+          if ($mode eq "script") {
+            $thislogfile = $logfile . '.' . $jobid;
+          } elsif (defined $jobname) {
+            $thislogfile =~ s/$jobname/$jobid/g;
+          }
+          # Check if done properly (I don't have other methods to do this yet)
+          $ret = system("tail -1 $thislogfile | grep 'Ended (code 0)' &> /dev/null");
+          if ($ret != 0) {
+            print "Job $jobid exit unexpectedly, killing all others\n";
+            foreach my $thisjobid (keys %childpids) {
+              kill('TERM', $childpids{$thisjobid});
+              delete $childpids{$thisjobid};
+              $numfail++;
+            }
+            last;
+          }
+        }
+      }
+      if (! %childpids) {
+        last;
+      }
+      sleep 1;
+    }
+    if ($ret != 0) {
+      last;
+    }
+  } else {    # loose mode; keep going when some jobs are wrong
+    for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
+      $r = wait();
+      if ($r == -1) { die "Error waiting for child process"; } # should never happen.
+      if ($? != 0) { $numfail++; $ret = 1; } # The child process failed.
+    }
+  }
 }
 
 if ($ret != 0) {
@@ -200,6 +263,8 @@ if ($ret != 0) {
     }
     print STDERR "slurm.pl: $numfail / $njobs failed, log is in $logfile\n";
   }
+} else {
+  print "slurm.pl: Done successfully.\n";
 }
-}
+
 exit ($ret);

@@ -19,7 +19,7 @@
 # run them in parallel and write log to some.log.xx
 # note that current script restrict jobs perbatch to be less than or equal to 64
 
-use POSIX;
+use POSIX ":sys_wait_h";
 
 @ARGV < 2 && die "usage: slurm.pl log-file command-line arguments...";
 
@@ -33,6 +33,7 @@ $gpuarg = '';
 $memfreearg = '';
 $mode = 'cmdline';	# 'cmdline' is the default mode
 %childpids = ();
+$killmode = "strict";
 
 sub roundup {
   my $n = shift;
@@ -52,6 +53,8 @@ if (@ARGV > 0) {
     $switch = shift @ARGV;
     if ($switch eq '-tc'){
       $jobsperbatch = shift @ARGV;
+    } elsif ($switch eq '--max-jobs-run') {
+      $jobsperbatch = shift @ARGV;
     } elsif ($switch eq '-pe'){
       $indicator = shift @ARGV;
       if($indicator ne 'smp'){
@@ -60,6 +63,8 @@ if (@ARGV > 0) {
       } else {
         $threadsperjob = shift @ARGV;
       }
+    } elsif ($switch eq '--num-threads'){
+      $threadsperjob = shift @ARGV;
     } elsif ($switch eq '-l'){
       $specifications = shift @ARGV;
       @specifics = split(/,/, $specifications);
@@ -89,6 +94,8 @@ if (@ARGV > 0) {
           exit(1);
         }
       }
+    } elsif ($switch eq '--loose') {
+      $killmode = "loose";
     }
   }
 
@@ -120,7 +127,8 @@ if (@ARGV > 0) {
   if ($jobsperbatch == 0){
     $jobsperbatch = $totaljobend - $totaljobstart + 1;
   }
-}
+}   # parse argument done
+
 if ($jobsperbatch > 64) {
   print STDERR "Warning: jobs per batch restricted to 64\n";
   $jobsperbatch = 64;
@@ -145,6 +153,7 @@ if ($mode eq 'cmdline') {
 }
 
 $numjobs = ($totaljobend - $totaljobstart + 1);
+
 for ($batchi = 0; $batchi < roundup($numjobs / $jobsperbatch); $batchi++) {
   $jobstart = $totaljobstart + $jobsperbatch * $batchi;
   $jobend = $totaljobstart + $jobsperbatch * ($batchi + 1) - 1;
@@ -187,7 +196,7 @@ for ($batchi = 0; $batchi < roundup($numjobs / $jobsperbatch); $batchi++) {
       chop $enddate;
       print F "# Ended (code $ret) at " . $enddate . ", elapsed time " . ($endtime-$starttime) . " seconds\n";
       close(F);
-      exit($ret == 0 ? 0 : 1);
+      exit($ret);
     } else {
       $childpids{$jobid} = $childpid;
     }
@@ -195,27 +204,67 @@ for ($batchi = 0; $batchi < roundup($numjobs / $jobsperbatch); $batchi++) {
 
   $ret = 0;
   $numfail = 0;
-  for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
-    $r = wait();
-    delete $childpids{$jobid};
-    if ($r == -1) { die "Error waiting for child process"; } # should never happen.
-    if ($? != 0) { $numfail++; $ret = 1; } # The child process failed.
-  }
 
-  if ($ret != 0) {
-    $njobs = $jobend - $jobstart + 1;
-    if ($njobs == 1) { 
-      print STDERR "slurm.pl: job failed, log is in $logfile\n";
-      if ($logfile =~ m/JOB/) {
-        print STDERR "slurm.pl: probably you forgot to put JOB=1:\$nj in your script.\n";
+  if ($killmode eq "strict") {
+    while (1) {
+      foreach my $jobid (keys %childpids) {
+        my $res = waitpid($childpids{$jobid}, WNOHANG);
+        if ($res == $childpids{$jobid}){
+          # this job done
+          delete $childpids{$jobid};    # At least this job is done
+          $numfail++;
+          $thislogfile = $logfile;
+          if ($mode eq "script") {
+            $thislogfile = $logfile . '.' . $jobid;
+          } elsif (defined $jobname) {
+            $thislogfile =~ s/$jobname/$jobid/g;
+          }
+          # Check if done properly (I don't have other methods to do this yet)
+          $ret = system("tail -1 $thislogfile | grep 'Ended (code 0)' &> /dev/null");
+          if ($ret != 0) {
+            print "Job $jobid exit unexpectedly, killing all others\n";
+            foreach my $thisjobid (keys %childpids) {
+              kill('TERM', $childpids{$thisjobid});
+              delete $childpids{$thisjobid};
+              $numfail++;
+            }
+            last;
+          }
+        }
       }
+      if (! %childpids) {
+        last;
+      }
+      sleep 1;
     }
-    else {
-      if (defined $jobname) {
-        $logfile =~ s/$jobname/*/g;
-      }
-      print STDERR "slurm.pl: $numfail / $njobs failed, log is in $logfile\n";
+    if ($ret != 0) {
+      last;
+    }
+  } else {    # loose mode; keep going when some jobs are wrong
+    for ($jobid = $jobstart; $jobid <= $jobend; $jobid++) {
+      $r = wait();
+      if ($r == -1) { die "Error waiting for child process"; } # should never happen.
+      if ($? != 0) { $numfail++; $ret = 1; } # The child process failed.
     }
   }
 }
+
+if ($ret != 0) {
+  $njobs = $jobend - $jobstart + 1;
+  if ($njobs == 1) { 
+    print STDERR "slurm.pl: job failed, log is in $logfile\n";
+    if ($logfile =~ m/JOB/) {
+      print STDERR "slurm.pl: probably you forgot to put JOB=1:\$nj in your script.\n";
+    }
+  }
+  else {
+    if (defined $jobname) {
+      $logfile =~ s/$jobname/*/g;
+    }
+    print STDERR "slurm.pl: $numfail / $njobs failed, log is in $logfile\n";
+  }
+} else {
+  print "slurm.pl: Done successfully.\n";
+}
+
 exit ($ret);
