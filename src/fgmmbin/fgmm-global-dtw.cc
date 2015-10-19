@@ -136,7 +136,7 @@ int main(int argc, char *argv[]) {
       // The following will crash if the dimensions differ, but
       // they would likely also differ for all the posts so it's probably
       // best to just crash.
-      BaseFloat score = posts_distance(post1, post2);
+      BaseFloat score = posts_distance(post1, post2) / ((post1.size()+post2.size())/2);
       sum += score;
       num_done++;
       ko.Stream() << key1 << ' ' << key2 << ' ' << score << std::endl;
