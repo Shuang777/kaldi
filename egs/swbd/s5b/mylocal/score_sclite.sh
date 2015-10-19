@@ -1,5 +1,6 @@
 #!/bin/bash
 # Copyright Johns Hopkins University (Author: Daniel Povey) 2012.  Apache 2.0.
+echo "$0 $@"
 
 # begin configuration section.
 cmd=run.pl
@@ -98,6 +99,28 @@ case "$name" in eval2000* )
       grep -v '^sw_' $dir/score_LMWT/${name}.ctm '>' $dir/score_LMWT/${name}.ctm.callhm '&&' \
       $hubscr -p $hubdir -V -l english -h hub5 -g $data/glm -r $dir/score_LMWT/stm.callhm $dir/score_LMWT/${name}.ctm.callhm || exit 1;
   fi
+ ;;
+esac
+
+case "$name" in eval2001* )
+  if [ $stage -le 3 ]; then
+    # Score only the, swbd part...
+    $cmd LMWT=$min_lmwt:$max_lmwt $dir/scoring/log/score.swbd.LMWT.log \
+      awk '/^sw_/ {next;} /^[0-9]/ {next;} // {print;}' $data/stm '>' $dir/score_LMWT/stm.swbd '&&' \
+      awk '/^sw_/ {next;} /^[0-9]/ {next;} // {print;}' $dir/score_LMWT/${name}.ctm '>' $dir/score_LMWT/${name}.ctm.swbd '&&' \
+      $hubscr -p $hubdir -V -l english -h hub5 -g $data/glm -r $dir/score_LMWT/stm.swbd $dir/score_LMWT/${name}.ctm.swbd || exit 1;
+    # Score only the cell part...
+    $cmd LMWT=$min_lmwt:$max_lmwt $dir/scoring/log/score.cell.LMWT.log \
+      awk '/^sw[^_]/ {next;} /^[0-9]/ {next;} // {print;}' $data/stm '>' $dir/score_LMWT/stm.cell '&&' \
+      awk '/^sw[^_]/ {next;} /^[0-9]/ {next;} // {print;}' $dir/score_LMWT/${name}.ctm '>' $dir/score_LMWT/${name}.ctm.cell '&&' \
+      $hubscr -p $hubdir -V -l english -h hub5 -g $data/glm -r $dir/score_LMWT/stm.cell $dir/score_LMWT/${name}.ctm.cell || exit 1;
+    # Score only the swb2p3 part...
+    $cmd LMWT=$min_lmwt:$max_lmwt $dir/scoring/log/score.swb2p3.LMWT.log \
+      grep -v '^sw' $data/stm '>' $dir/score_LMWT/stm.swb2p3 '&&' \
+      grep -v '^sw' $dir/score_LMWT/${name}.ctm '>' $dir/score_LMWT/${name}.ctm.swb2p3 '&&' \
+      $hubscr -p $hubdir -V -l english -h hub5 -g $data/glm -r $dir/score_LMWT/stm.swb2p3 $dir/score_LMWT/${name}.ctm.swb2p3 || exit 1;
+  fi
+
  ;;
 esac
 
