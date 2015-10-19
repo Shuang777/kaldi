@@ -89,7 +89,10 @@ int main(int argc, char *argv[]) {
      
     int32 frames_per_reduce = 10000;
     po.Register("frames-per-reduce", &frames_per_reduce, "Number of frames per average operation on MPI (default = 10000)");
-    
+
+    int32 frames_start_reduce = 0;
+    po.Register("frames-start-reduce", &frames_start_reduce, "Number of frames for single machine update before model averaging on MPI (default = 0)");
+        
     int32 max_reduce_count = INT_MAX;
     po.Register("max-reduce-count", &max_reduce_count, "Maximum number of average operation. (default = INT_MAX)");
 
@@ -378,25 +381,36 @@ int main(int argc, char *argv[]) {
           nnet.CopyBufferAndUpdate();
         }
 
-        if (!crossvalidate && reduce_content != "gradient" && total_frames/frames_per_reduce != ((total_frames+nnet_in.NumRows())/frames_per_reduce)) { // reduce every frames_per_reduce frames
-          mpi_timer.Reset();
-          if (mpi_rank == 0)
-            KALDI_LOG << "### MPI " << reduce_type << " reducing after " << total_frames+nnet_in.NumRows() << " frames.";
-          
-          nnet.PrepSendBuffer();
-          if (reduce_type == "butterfly") {
-            int32 friend_id = get_butterfly_friend_id(mpi_rank, mpi_jobs, reduce_count);
-            share_nnet_buffer(nnet, mpi_rank, friend_id, friend_id);
-          } else if (reduce_type == "allreduce") {
-            all_reduce_nnet_buffer(nnet, mpi_jobs);
-          } else if (reduce_type == "ring") {
-            share_nnet_buffer(nnet, mpi_rank, (mpi_rank + 1) % mpi_jobs, (mpi_rank + mpi_jobs - 1) % mpi_jobs);
-          } else if (reduce_type == "hoppingring") {
-            share_nnet_buffer(nnet, mpi_rank, (mpi_rank + reduce_shift) % mpi_jobs, (mpi_rank + mpi_jobs - reduce_shift) % mpi_jobs);
-          }
-          reduce_shift = (reduce_shift + 1) % mpi_jobs;
-          if (reduce_shift == 0) {    // avoid averaging with itself
-            reduce_shift = 1;
+        if (!crossvalidate && reduce_content != "gradient" && total_frames/frames_per_reduce != ((total_frames+nnet_in.NumRows())/frames_per_reduce)) { 
+          // reduce or just send weights
+          if (total_frames < frames_start_reduce) {
+            // send the weight from reduce_count to all the others
+            int32 src_rank_id = reduce_count % mpi_jobs;
+            if (mpi_rank == 0)
+              KALDI_LOG << "### MPI broadcasting from " << src_rank_id << " after " << total_frames+nnet_in.NumRows() << " frames.";
+            nnet.PrepSendBuffer();
+            send_nnet_buffer(nnet, src_rank_id);
+          } else {
+            // reduce every frames_per_reduce frames
+            mpi_timer.Reset();
+            if (mpi_rank == 0)
+              KALDI_LOG << "### MPI " << reduce_type << " reducing after " << total_frames+nnet_in.NumRows() << " frames.";
+            
+            nnet.PrepSendBuffer();
+            if (reduce_type == "butterfly") {
+              int32 friend_id = get_butterfly_friend_id(mpi_rank, mpi_jobs, reduce_count);
+              share_nnet_buffer(nnet, mpi_rank, friend_id, friend_id);
+            } else if (reduce_type == "allreduce") {
+              all_reduce_nnet_buffer(nnet, mpi_jobs);
+            } else if (reduce_type == "ring") {
+              share_nnet_buffer(nnet, mpi_rank, (mpi_rank + 1) % mpi_jobs, (mpi_rank + mpi_jobs - 1) % mpi_jobs);
+            } else if (reduce_type == "hoppingring") {
+              share_nnet_buffer(nnet, mpi_rank, (mpi_rank + reduce_shift) % mpi_jobs, (mpi_rank + mpi_jobs - reduce_shift) % mpi_jobs);
+            }
+            reduce_shift = (reduce_shift + 1) % mpi_jobs;
+            if (reduce_shift == 0) {    // avoid averaging with itself
+              reduce_shift = 1;
+            }
           }
           reduce_count++;
           mpi_time += mpi_timer.Elapsed();

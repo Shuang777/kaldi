@@ -31,3 +31,9 @@ void all_reduce_nnet_buffer(Nnet &nnet, const int mpi_jobs, const bool average_m
     nnet.SetAndScaleBuffer(scale);
   }
 }
+
+void send_nnet_buffer(Nnet &nnet, const int src_rank_id) {
+  int num_elements = nnet.NumElements();
+  MPI_Bcast(nnet.GetSendBuffer(), num_elements, MPI_FLOAT, src_rank_id, MPI_COMM_WORLD);
+  nnet.SetAndScaleBuffer(1.0);
+}
