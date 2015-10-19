@@ -29,39 +29,94 @@ gmmdir=exp/tri4b
 lm=tg
 traindata=data/train
 stage=0 # resume training with --stage=N
+feat_type=
 # End of config.
 . utils/parse_options.sh
 #
-if [ $stage -le 0 ]; then
-  utils/subset_data_dir_tr_cv.sh ${traindata}_nodup ${traindata}_nodup_tr90 ${traindata}_nodup_cv10
-fi
+#if [ $stage -le 0 ]; then
+#  utils/subset_data_dir_tr_cv.sh ${traindata}_nodup ${traindata}_nodup_tr90 ${traindata}_nodup_cv10
+#fi
 
 if [ $stage -le 1 ]; then
   # Pre-train DBN, i.e. a stack of RBMs
-  dir=exp/dnn5b_pretrain-dbn
-  $cuda_cmd $dir/log/pretrain_dbn.log \
-    mysteps/pretrain_dbn.sh --rbm-iter 1 --transdir exp/tri4b_ali_nodup ${traindata}_nodup $dir
+  if [ "$feat_type" == fmllr ]; then
+    dir=exp/dnn5b_pretrain-dbn
+    $cuda_cmd $dir/log/pretrain_dbn.log \
+      mysteps/pretrain_dbn.sh --rbm-iter 1 --transdir exp/tri4b_ali_nodup ${traindata}_nodup $dir
+  elif [ "$feat_type" == traps ]; then
+    dir=exp/dnn5b_dbn_traps
+    $cuda_cmd $dir/log/pretrain_dbn.log \
+      mysteps/pretrain_dbn.sh --rbm-iter 1 --feat-type traps ${traindata}_nodup $dir
+  fi
 fi
 
 if [ $stage -le 2 ]; then
   # Train the DNN optimizing per-frame cross-entropy.
-  dir=exp/dnn5b_pretrain-dbn_dnn
-  ali=${gmmdir}_ali_nodup
-  feature_transform=exp/dnn5b_pretrain-dbn/final.feature_transform
-  dbn=exp/dnn5b_pretrain-dbn/6.dbn
-  # Train
-  $cuda_cmd $dir/log/train_nnet.log \
-    mysteps/train_nnet.sh --feature-transform $feature_transform --dbn $dbn --hid-layers 0 --learn-rate 0.008 \
-    --resume-anneal false \
-    ${traindata}_nodup $ali $dir || exit 1;
-  # Decode (reuse HCLG graph)
-  mysteps/decode_nnet.sh --nj 20 --cmd "$decode_cmd" --config conf/decode_dnn.config --acwt 0.08333 \
-    --transform-dir exp/tri4b/decode_eval2000_sw1_${lm} \
-    $gmmdir/graph_sw1_${lm} data/eval2000 $dir/decode_eval2000_sw1_${lm} || exit 1;
-  # Rescore using unpruned trigram sw1_fsh
-#  steps/lmrescore.sh --mode 3 --cmd "$mkgraph_cmd" data/lang_sw1_fsh_tg data/lang_sw1_fsh_tg data/eval2000 \
-#    $dir/decode_eval2000_sw1_fsh_tg $dir/decode_eval2000_sw1_fsh_tg.3 || exit 1 
+  if [ "$feat_type" == fmllr ]; then
+    dir=exp/dnn5b_pretrain-dbn_dnn
+    ali=${gmmdir}_ali_nodup
+    feature_transform=exp/dnn5b_pretrain-dbn/final.feature_transform
+    dbn=exp/dnn5b_pretrain-dbn/6.dbn
+    # Train
+    $cuda_cmd $dir/log/train_nnet.log \
+      mysteps/train_nnet.sh --feature-transform $feature_transform --dbn $dbn --hid-layers 0 --learn-rate 0.008 \
+      --resume-anneal false \
+      ${traindata}_nodup $ali $dir || exit 1;
+    # Decode (reuse HCLG graph)
+    mysteps/decode_nnet.sh --nj 20 --cmd "$decode_cmd" --config conf/decode_dnn.config --acwt 0.08333 \
+      --transform-dir exp/tri4b/decode_eval2000_sw1_${lm} \
+      $gmmdir/graph_sw1_${lm} data/eval2000 $dir/decode_eval2000_sw1_${lm} || exit 1;
+    # Rescore using unpruned trigram sw1_fsh
+    #  steps/lmrescore.sh --mode 3 --cmd "$mkgraph_cmd" data/lang_sw1_fsh_tg data/lang_sw1_fsh_tg data/eval2000 \
+    #    $dir/decode_eval2000_sw1_fsh_tg $dir/decode_eval2000_sw1_fsh_tg.3 || exit 1 
+  elif [ "$feat_type" == traps ]; then
+    dir=exp/dnn5b_dbn_dnn_traps
+    ali=${gmmdir}_ali_nodup
+    feature_transform=exp/dnn5b_dbn_traps/final.feature_transform
+    dbn=exp/dnn5b_dbn_traps/6.dbn
+    # Train
+    $cuda_cmd $dir/log/train_nnet.log \
+      mysteps/train_nnet.sh --feature-transform $feature_transform --dbn $dbn --hid-layers 0 --learn-rate 0.008 \
+      --resume-anneal false --feat-type $feat_type \
+      ${traindata}_nodup $ali $dir || exit 1;
+    # Decode (reuse HCLG graph)
+    mysteps/decode_nnet.sh --nj 20 --cmd "$decode_cmd" --config conf/decode_dnn.config --feat-type $feat_type \
+      --acwt 0.08333 $gmmdir/graph_sw1_${lm} data/eval2000 $dir/decode_eval2000_sw1_${lm} || exit 1;
+  fi
 fi
+
+## bottleneck approach
+if [ $stage -le 3 ]; then
+  # 1st network, overall context +/-5 frames
+  # - the topology is 90_1500_1500_80_1500_NSTATES, linear bottleneck
+  dir=exp/nnet5b_uc-part1
+  ali=${gmmdir}_ali_nodup
+  $cuda_cmd $dir/log/train_nnet.log \
+    mysteps/train_nnet.sh --hid-layers 2 --hid-dim 1500 --bn-dim 80 \
+      --feat-type traps --splice 5 --traps-dct-basis 6 --learn-rate 0.008 \
+    ${traindata}_nodup $ali $dir
+fi
+
+if [ $stage -le 4 ]; then
+  # Compose feature_transform for the next stage, 
+  # - remaining part of the first network is fixed
+  dir=exp/nnet5b_uc-part1
+  feature_transform=$dir/final.feature_transform.part1
+  nnet-concat $dir/final.feature_transform \
+    "nnet-copy --remove-last-layers=4 --binary=false $dir/final.nnet - |" \
+    "utils/nnet/gen_splice.py --fea-dim=80 --splice=2 --splice-step=5 |" \
+    $feature_transform 
+  
+  # 2nd network, overall context +/-15 frames
+  # - the topology will be 400_1500_1500_30_1500_NSTATES, again, the bottleneck is linear
+  dir=exp/nnet5b_uc-part2
+  ali=${gmmdir}_ali_nodup
+  $cuda_cmd $dir/log/train_nnet.log \
+    mysteps/train_nnet.sh --hid-layers 2 --hid-dim 1500 --bn-dim 30 \
+      --feat-type traps --feature-transform $feature_transform --learn-rate 0.008 \
+      ${traindata}_nodup $ali $dir
+fi
+
 
 exit 
 # Sequence training using sMBR criterion, we do Stochastic-GD 
