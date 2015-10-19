@@ -385,6 +385,10 @@
 /src/ivectorbin/ivector-extractor-validation
 /src/ivectorbin/ivector-extractor-stats-print
 /src/ivectorbin/ivector-compute-distance
+/src/ivectorbin/ivector-compute-dot-distance
+/src/ivectorbin/ivector-prep-pairs
+/src/ivectorbin/ivector-prep-product
+
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk
