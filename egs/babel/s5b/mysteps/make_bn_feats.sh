@@ -39,7 +39,11 @@ bnfeadir=$5
 
 # copy the dataset metadata from srcdata.
 mkdir -p $data || exit 1;
-cp $srcdata/* $data 2>/dev/null; rm $data/feats.scp $data/cmvn.scp;
+cp $srcdata/* $data 2>/dev/null; 
+[ -f $data/feats.scp ] && rm $data/feats.scp; 
+[ -f $data/cmvn.scp ] && rm $data/cmvn.scp;
+
+[ -f $bnfeadir/raw_bnfea_$name.1.scp ] && rm $bnfeadir/raw_bnfea_$name.*.scp
 
 # make $bnfeadir an absolute pathname.
 bnfeadir=`perl -e '($dir,$pwd)= @ARGV; if($dir!~m:^/:) { $dir = "$pwd/$dir"; } print $dir; ' $bnfeadir ${PWD}`
@@ -123,7 +127,7 @@ else
 fi
 
 #Run the forward pass
-$cmd JOB=1:$nj $logdir/make_bnfeats.JOB.log \
+$cmd JOB=1:$nj $logdir/make_bnfeats_$name.JOB.log \
   nnet-forward --feature-transform=$feature_transform $nnet "$feats" \
   ark,scp:$bnfeadir/raw_bnfea_$name.JOB.ark,$bnfeadir/raw_bnfea_$name.JOB.scp \
   || exit 1;

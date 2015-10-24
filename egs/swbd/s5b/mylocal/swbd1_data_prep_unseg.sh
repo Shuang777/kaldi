@@ -18,6 +18,7 @@
 ## on the directory structure. (Peng Qi, Aug 2014)
 
 transdir=
+keep_silence=false
 
 . parse_options.sh
 
@@ -101,13 +102,21 @@ sort -c $dir/transcripts1.txt || exit 1; # check it's sorted.
 # speech to somone; we will give phones to the other three (NSN, SPN, LAU). 
 # There will also be a silence phone, SIL.
 # **NOTE: modified the pattern matches to make them case insensitive
-cat $dir/transcripts1.txt \
-  | perl -ane 's:\s\[SILENCE\](\s|$):$1:gi; 
-               s/<B_ASIDE>//gi; 
-               s/<E_ASIDE>//gi; 
-               print;' \
-  | awk '{if(NF > 1) { print; } } ' > $dir/transcripts2.txt
-
+if [ $keep_silence == false ]; then
+  cat $dir/transcripts1.txt \
+    | perl -ane 's:\s\[SILENCE\](\s|$):$1:gi; 
+                 s/<B_ASIDE>//gi; 
+                 s/<E_ASIDE>//gi; 
+                 print;' \
+    | awk '{if(NF > 1) { print; } } ' > $dir/transcripts2.txt
+else
+  cat $dir/transcripts1.txt \
+    | perl -ane 's:\s\[SILENCE\](\s|$): !sil\n:gi;
+                 s/<B_ASIDE>//gi;
+                 s/<E_ASIDE>//gi;
+                 print;' \
+    | awk '{if(NF > 1) { print; } } ' > $dir/transcripts2.txt
+fi
 
 # **NOTE: swbd1_map_words.pl has been modified to make the pattern matches 
 # case insensitive
@@ -120,7 +129,8 @@ awk '{
        segment=$1;
        split(segment,S,"[_-]");
        side=S[2]; audioname=S[1]; startf=S[3]; endf=S[4];
-       print segment " " audioname "-" side " " startf/100 " " endf/100
+       if (startf != endf)
+         print segment " " audioname "-" side " " startf/100 " " endf/100;
 }' < $dir/text > $dir/segments
 
 sed -e 's?.*/??' -e 's?.sph??' $dir/sph.flist | paste - $dir/sph.flist \

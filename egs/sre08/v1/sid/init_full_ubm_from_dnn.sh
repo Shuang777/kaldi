@@ -68,7 +68,6 @@ logdir=$dir/log
 
 if [ -z "$nnet" ]; then nnet=$dnndir/final.nnet; fi
 if [ -z "$feature_transform" ]; then feature_transform=$dnndir/final.feature_transform; fi
-if [ -z "$class_frame_counts" ]; then class_frame_counts=$dnndir/ali_train_pdf.counts; fi
 
 num_components=$(nnet-info $nnet | grep Softmax | tr ',' ' ' | awk '{print $NF}')
 
