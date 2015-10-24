@@ -47,9 +47,6 @@ rbm_extra_opts=
 feat_type=
 feature_transform= # Optionally reuse feature processing front-end (override splice,etc.)
 feature_transform_proto= # Optionally pass prototype of feature transform
-delta_order=       # Optionally use deltas on the input features
-apply_cmvn=false   # Optionally do CMVN of the input features
-norm_vars=false    # When apply_cmvn=true, this enables CVN
 splice=5           # Temporal splicing
 splice_step=1      # Stepsize of the splicing (1 is consecutive splice, 
                    # value 2 would do [ -10 -8 -6 -4 -2 0 2 4 6 8 10 ] splicing)
@@ -116,7 +113,13 @@ echo
 echo "# PREPARING FEATURES"
 #read the features
 if [ -z "$feat_type" ]; then
-  if [ ! -z "$transdir" ] && [ -f $transdir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
+  feat_type=delta;
+  if [ ! -z "$transdir" ] && [ -f $transdir/final.mat ]; then 
+    feat_type=lda;
+    if [ -f $transdir/trans.1 ];then
+      feat_type=fmllr;
+    fi
+  fi
 fi
 echo "$0: feature type is $feat_type"
 
@@ -141,20 +144,19 @@ else
 fi
 
 case $feat_type in
+  raw) feats="scp:$dir/shuffle.scp"
+   ;;
+  cmvn|traps) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- |"
+   ;;
   delta) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- | add-deltas ark:- ark:- |"
    ;;
-  raw) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- |"
-   ;;
-  lda) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
+  lda|fmllr) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
     cp $transdir/final.mat $dir    
-   ;;
-  fmllr) feats="scp:$dir/shuffle.scp"
-   ;;
-  traps) feats="scp:$dir/shuffle.scp"
    ;;
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
-if [ -f $transdir/trans.1 ] && [ $feat_type == "lda" ]; then
+
+if [ -f $transdir/trans.1 ] && [ $feat_type == "fmllr" ]; then
   if [ -z $semitransdir ]; then
     echo "$0: using transforms from $transdir"
     feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/trans.*|' ark:- ark:- |"
@@ -162,10 +164,6 @@ if [ -f $transdir/trans.1 ] && [ $feat_type == "lda" ]; then
     echo "$0: using transforms from $transdir and $semitransdir"
     feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/trans.* $semitransdir/trans.* |' ark:- ark:- |"
   fi
-fi
-if [ -f $transdir/raw_trans.1 ] && [ $feat_type == "raw" ]; then
-  echo "$0: using raw-fMLLR transforms from $transdir"
-  feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/raw_trans.*|' ark:- ark:- |"
 fi
 
 #re-save the shuffled features, so they are stored sequentially on the disk in /tmp/
