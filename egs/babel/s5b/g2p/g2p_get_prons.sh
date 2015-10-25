@@ -1,4 +1,5 @@
 #!/bin/sh 
+{
 
 DEFAULTPRON="s n s n s n s"
 DEFAULTSILPRON="sil"
@@ -6,13 +7,13 @@ SYLDELIMITER="=";
 
 # needed for indexgrep
 export PERLLIB=$PERLLIB:/u/drspeech/share/lib/icsiargs.pl
-export PATH=$PATH:/u/drspeech/projects/swordfish/collab/phonetisaurus/v4b_chuck
 
 function usage () {
     ( echo "Usage:"
       echo "$0 \\"
       echo "  -m model \\"
       echo "  -v vocablist \\"
+      echo "  -d directory \\"
       echo "  [-s (syllable=false)] \\"
       echo "  [-S (constrain_syllables=false)] \\"
       echo "  [-h (hyphens=false)] \\"
@@ -33,18 +34,9 @@ ulimit -c 0
 # since we're checking status of pipes
 #set -o pipefail
 
-PATH=/u/drspeech/projects/swordfish/x86_64-linux/bin:$PATH
-if [ -z "$TMPDIR" ]; then
-    TMPDIR=/tscratch/tmp/`/usr/bin/whoami`
-fi
-if [ ! -d $TMPDIR ]; then
-    mkdir $TMPDIR
-fi
-
 MBR="Y"
 
-
-ARGS=`getopt -o 'm:v:o:e:N:sShn' -l 'model:,vocablist:,output:,error_output:,nbest:,syllable,constrain_syllables,hyphens,no_MBR' -- "$@"`
+ARGS=`getopt -o 'm:v:o:d:e:N:sShn' -l 'model:,vocablist:,output:,directory:,error_output:,nbest:,syllable,constrain_syllables,hyphens,no_MBR' -- "$@"`
 
 #check for bad args
 if [ $? -ne 0 ]; then usage; fi
@@ -69,6 +61,10 @@ while /bin/true; do
 	    OUTPUT=$2;
       [ -f $OUTPUT ] && rm $OUTPUT;
 	    shift 2;;
+  -d|--directory)
+      TMPDIR=$2;
+      [ -d $TMPDIR ] || mkdir -p $TMPDIR
+      shift 2;;
 	-e|--error_output)
 	    ERRORS=$2;
       [ -f $ERRORS ] && rm $ERRORS;
@@ -137,14 +133,14 @@ s/~~/ _/g
 EOF
     filter="sed -f $TMPDIR/g2p.sed.$$"
 elif [ "$CONSTRAIN_SYLLABLES" = "Y" ]; then
-    filter="g2p_onc2sylmark.pl $HYPHENS"
+    filter="g2p/g2p_onc2sylmark.pl $HYPHENS"
 else
     filter="cat"
 fi
 
 
 INPUT=$TMPDIR/g2p.input.$$
-g2p_format_dictionary.py -c 2 < $VOCAB | sed 's/      //' > $INPUT
+g2p/g2p_format_dictionary.py -c 2 < $VOCAB | sed 's/      //' > $INPUT
 
 # NEW STRATEGY
 #   -- Always get pronunciations one at a time
@@ -168,7 +164,7 @@ paste $VOCAB $INPUT | while read WORD HESCII; do
 	--sep=' ' \
 	--mbr=$use_mbr \
   --nbest=$nbest \
-	2> $TMPDIR/g2p.err.$$ | cut -f2 | g2p_filter_nulls.sed | $filter > $TMPDIR/g2p.output.$$
+	2> $TMPDIR/g2p.err.$$ | cut -f2 | g2p/g2p_filter_nulls.sed | $filter > $TMPDIR/g2p.output.$$
 
   STATUS=$?
 
@@ -201,6 +197,4 @@ else
     paste -d'	' $VOCAB - > $OUTPUT
     #sed 's/-/_/g' 
 fi
-
-#rm -f $TMPDIR/g2p.*.$$
-
+}

@@ -6,12 +6,7 @@
 $fst=$ARGV[0];
 $dict=$ARGV[1];
 $outfst=$ARGV[2];
-
-$tmpdir=$ENV{"TMPDIR"};
-if ("$tmpdir" eq "") {
-    $tmpdir="/tscratch/tmp/".`/usr/bin/whoami`;
-    chomp($tmpdir);
-}
+$tmpdir=$ARGV[3];
 
 $prefix="$tmpdir/g2p_buildsyl.$$";
 $syms="$prefix.osyms";

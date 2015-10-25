@@ -23,13 +23,12 @@ done
 
 # separate pronunciations
 if [[ "$lexiconFlags" =~ "romanized" ]]; then
-  sed 's/	[^	]*	/	/' $lexicon | grep -v '^<' | \
-    awk --field-separator '	' '{OFS="	"; for(i=2;i<=NF;i++) {print $1,$i}}' > $dir/lexicon.train.txt
+  sed 's/\t[^\t]*\t/\t/' $lexicon | grep -v '^<' | \
+    awk --field-separator '\t' '{OFS="\t"; for(i=2;i<=NF;i++) {print $1,$i}}' > $dir/lexicon.train.txt
 else
   grep -v '^<' $LP/lexicon.txt | \
-    awk --field-separator '	' '{OFS="	"; for(i=2;i<=NF;i++) {print $1,$i}}' > $dir/lexicon.train.txt
+    awk --field-separator '\t' '{OFS="\t"; for(i=2;i<=NF;i++) {print $1,$i}}' > $dir/lexicon.train.txt
 fi
-
 if [[ $langpack =~ 107 || $langpack =~ 203 ]]; then
   g2p/g2p_move_tones.pl $dir/lexicon.train.txt > $dir/lexicon.train.txt.tones_moved
   mv $dir/lexicon.train.txt.tones_moved $dir/lexicon.train.txt

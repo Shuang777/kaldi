@@ -122,6 +122,8 @@ CLEAN=N
 INTERP=1.0
 VERBOSE=""
 
+echo "$0 $@"
+
 ARGS=`getopt -o "d:p:c:sbSruG:P:o:i:mzh" -l "dictionary:,prefix:,column:,syllable,break_syllables,constrain_syllables,roman_phones,remove_underscores,max_grapheme_cluster:,max_phoneme_cluster:,output_model:,interpolate:,multiple_em_estimations,clean,help" -- "$@"`
 
 #check for bad args
@@ -352,6 +354,6 @@ fi
 
 if [ ! -z "$CONSTRAIN_SYLLABLES" ]; then
   mv $MODEL $MODEL.nosylconstrfst
-  g2p/g2p_build_syllable_constrainer.pl $MODEL.nosylconstrfst $BASEDICT $MODEL
+  g2p/g2p_build_syllable_constrainer.pl $MODEL.nosylconstrfst $BASEDICT $MODEL $(dirname $MODEL)
 fi
 
