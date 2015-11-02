@@ -138,50 +138,32 @@ else
     filter="cat"
 fi
 
+echo "filter is $filter"
 
-INPUT=$TMPDIR/g2p.input.$$
-g2p/g2p_format_dictionary.py -c 2 < $VOCAB | sed 's/      //' > $INPUT
-
-# NEW STRATEGY
-#   -- Always get pronunciations one at a time
-#   -- Check output and replace with default string if error
-#   -- Log to error file
-
+#g2p/g2p_format_dictionary.py -c 2 < $VOCAB | sed 's/\t//' > $INPUT
 
 if [ $MBR != "Y" ]; then
     use_mbr="false"
 else
     use_mbr="true"
 fi
-    
+
 #echo $INPUT
 #set -x
-paste $VOCAB $INPUT | while read WORD HESCII; do
-    phonetisaurus-g2p \
+echo "begin predicting"
+
+phonetisaurus-g2p \
 	--model=$MODEL \
-	--input="$HESCII" \
-	--isfile=false \
-	--sep=' ' \
+	--input="$VOCAB" \
+	--isfile=true \
+	--sep='' \
 	--mbr=$use_mbr \
+  --words=true \
   --nbest=$nbest \
-	2> $TMPDIR/g2p.err.$$ | cut -f2 | g2p/g2p_filter_nulls.sed | $filter > $TMPDIR/g2p.output.$$
+  1> $OUTPUT.tmp
 
-  STATUS=$?
-
-  [ ! -s $TMPDIR/g2p.output.$$ ] && STATUS=1
-
-  if [ $STATUS -eq 0 ]; then
-    cat $TMPDIR/g2p.output.$$ | sed "s#^#$WORD\t#" >> $OUTPUT
-  else
-	  case "$WORD" in
-      "<"*) echo "$WORD	$DEFAULTSILPRON" >>$OUTPUT;;
-      *) echo "$WORD	$DEFAULTPRON" >>$OUTPUT;;
-	  esac
-
-	  echo "Error processing $WORD == $HESCII" >> $ERRORS
-	  cat $TMPDIR/g2p.err.$$ >> $ERRORS
-  fi
-done
+cut -f3- $OUTPUT.tmp  | g2p/g2p_filter_nulls.sed | $filter > $OUTPUT.pron
+cut -f1 $OUTPUT.tmp | paste /dev/stdin $OUTPUT.pron > $OUTPUT
 
 exit 0
 if [ -z "$OUTPUT" ]; then
@@ -197,4 +179,5 @@ else
     paste -d'	' $VOCAB - > $OUTPUT
     #sed 's/-/_/g' 
 fi
+
 }
