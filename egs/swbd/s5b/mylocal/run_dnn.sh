@@ -25,11 +25,13 @@ set -o pipefail
 . ./path.sh ## Source the tools/utils (import the queue.pl)
 
 # Config:
-gmmdir=exp/tri4b
+gmmdir=exp/train20_tri4b
 lm=tg
-traindata=data/train
+traindata=data/train20
+decodename=eval2000_frm20
 stage=0 # resume training with --stage=N
-feat_type=
+feat_type=traps
+nj=20
 # End of config.
 . utils/parse_options.sh
 #
@@ -37,12 +39,12 @@ feat_type=
 #  utils/subset_data_dir_tr_cv.sh ${traindata}_nodup ${traindata}_nodup_tr90 ${traindata}_nodup_cv10
 #fi
 
-dir=exp/dnn5b_${feat_type}_dbn
+dir=exp/train20_dnn5b_${feat_type}_dbn
 if [ $stage -le 1 ]; then
   # Pre-train DBN, i.e. a stack of RBMs
   case $feat_type in
     fmllr|lda) $cuda_cmd $dir/log/pretrain_dbn.log \
-        mysteps/pretrain_dbn.sh --rbm-iter 1 --feat-type $feat_type --transdir exp/tri4b_ali_nodup ${traindata}_nodup $dir
+        mysteps/pretrain_dbn.sh --rbm-iter 1 --feat-type $feat_type --transdir ${gmmdir}_ali_nodup ${traindata}_nodup $dir
     ;;
     traps) $cuda_cmd $dir/log/pretrain_dbn.log \
         mysteps/pretrain_dbn.sh --rbm-iter 1 --feat-type $feat_type ${traindata}_nodup $dir
@@ -60,13 +62,13 @@ if [ $stage -le 2 ]; then
   # Train the DNN optimizing per-frame cross-entropy
   case $feat_type in
     fmllr|lda)
-      $cuda_cmd $dir/log/train_nnet.log \
-        mysteps/train_nnet.sh --feature-transform $feature_transform --dbn $dbn --hid-layers 0 --learn-rate 0.008 \
-        --resume-anneal false --feat-type $feat_type \
-        ${traindata}_nodup $ali $dir || exit 1;
-      mysteps/decode_nnet.sh --nj 20 --cmd "$decode_cmd" --config conf/decode_dnn.config --acwt 0.08333 \
-        --transform-dir exp/tri4b/decode_eval2000_sw1_${lm} --feat-type $feat_type \
-        $gmmdir/graph_sw1_${lm} data/eval2000 $dir/decode_eval2000_sw1_${lm} || exit 1;
+#      $cuda_cmd $dir/log/train_nnet.log \
+#        mysteps/train_nnet.sh --feature-transform $feature_transform --dbn $dbn --hid-layers 0 --learn-rate 0.008 \
+#        --resume-anneal false --feat-type $feat_type \
+#        ${traindata}_nodup $ali $dir || exit 1;
+      mysteps/decode_nnet.sh --nj $nj --cmd "$decode_cmd" --config conf/decode_dnn.config --acwt 0.08333 \
+        --transform-dir ${gmmdir}/decode_${decodename}_sw1_${lm} --feat-type $feat_type \
+        $gmmdir/graph_sw1_${lm} data/${decodename} $dir/decode_${decodename}_sw1_${lm} || exit 1;
     # Rescore using unpruned trigram sw1_fsh
     #  steps/lmrescore.sh --mode 3 --cmd "$mkgraph_cmd" data/lang_sw1_fsh_tg data/lang_sw1_fsh_tg data/eval2000 \
     #    $dir/decode_eval2000_sw1_fsh_tg $dir/decode_eval2000_sw1_fsh_tg.3 || exit 1 
@@ -77,8 +79,8 @@ if [ $stage -le 2 ]; then
         --resume-anneal false --feat-type $feat_type \
         ${traindata}_nodup $ali $dir || exit 1;
       # Decode (reuse HCLG graph)
-      mysteps/decode_nnet.sh --nj 20 --cmd "$decode_cmd" --config conf/decode_dnn.config --feat-type $feat_type \
-        --acwt 0.08333 $gmmdir/graph_sw1_${lm} data/eval2000 $dir/decode_eval2000_sw1_${lm} || exit 1;
+      mysteps/decode_nnet.sh --nj $nj --cmd "$decode_cmd" --config conf/decode_dnn.config --feat-type $feat_type \
+        --acwt 0.08333 $gmmdir/graph_sw1_${lm} data/${decodename} $dir/decode_${decodename}_sw1_${lm} || exit 1;
     ;;
   esac
 fi

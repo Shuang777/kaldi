@@ -112,24 +112,20 @@ norm_vars=`cat $srcdir/norm_vars 2>/dev/null` || norm_vars=false # cmn/cmvn opti
 
 # Create the feature stream:
 case $feat_type in
+  raw) feats="scp:$sdata/JOB/feats.scp ark:- |";;
+  smvn|traps) feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- |";;
   delta) feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | add-deltas ark:- ark:- |";;
-  raw) feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- |";;
-  lda) feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $srcdir/final.mat ark:- ark:- |"
-   ;;
-  fmllr) feats="scp:$sdata/JOB/feats.scp"
-   ;;
-  traps) feats="scp:$sdata/JOB/feats.scp"
-   ;;
+  lda|fmllr) feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $srcdir/final.mat ark:- ark:- |" ;;
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
 if [ ! -z "$transform_dir" ]; then
   echo "$0: using transforms from $transform_dir"
-  if [ "$feat_type" == "lda" ]; then
+  if [ "$feat_type" == "fmllr" ]; then
     [ ! -f $transform_dir/trans.1 ] && echo "$0: no such file $transform_dir/trans.1" && exit 1;
     [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
       && echo "$0: #jobs mismatch with transform-dir." && exit 1;
     feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark,s,cs:$transform_dir/trans.JOB ark:- ark:- |"
-  elif [[ "$feat_type" == "raw" || "$feat_type" == "fmllr" ]]; then
+  elif [[ "$feat_type" == "raw" ]]; then
     [ ! -f $transform_dir/raw_trans.1 ] && echo "$0: no such file $transform_dir/raw_trans.1" && exit 1;
     [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
       && echo "$0: #jobs mismatch with transform-dir." && exit 1;

@@ -17,6 +17,9 @@
 # make the speaker-ids identical to the utterance-ids.  The
 # speaker information does not have to correspond to actual
 # speakers, it's just the level you want to adapt at.
+{
+set -e
+set -o pipefail
 
 echo "$0 $@"  # Print the command line for logging
 
@@ -72,21 +75,17 @@ fi
 
 if $fake; then
   dim=`feat-to-dim "$feats" -`
-  ! cat $data/spk2utt | awk -v dim=$dim '{print $1, "["; for (n=0; n < dim; n++) { printf("0 "); } print "1";
+  cat $data/spk2utt | awk -v dim=$dim '{print $1, "["; for (n=0; n < dim; n++) { printf("0 "); } print "1";
                                                         for (n=0; n < dim; n++) { printf("1 "); } print "0 ]";}' | \
-    copy-matrix ark:- ark,scp:$cmvndir/cmvn_$name.ark,$cmvndir/cmvn_$name.scp && \
-     echo "Error creating fake CMVN stats" && exit 1;
+    copy-matrix ark:- ark,scp:$cmvndir/cmvn_$name.ark,$cmvndir/cmvn_$name.scp
 elif $two_channel; then
-  ! compute-cmvn-stats-two-channel $data/reco2file_and_channel "$feats" \
-       ark,scp:$cmvndir/cmvn_$name.ark,$cmvndir/cmvn_$name.scp \
-    2> $logdir/cmvn_$name.log && echo "Error computing CMVN stats (using two-channel method)" && exit 1;
+  compute-cmvn-stats-two-channel $data/reco2file_and_channel "$feats" \
+       ark,scp:$cmvndir/cmvn_$name.ark,$cmvndir/cmvn_$name.scp
 elif [ ! -z "$fake_dims" ]; then
-  ! compute-cmvn-stats --spk2utt=ark:$data/spk2utt "$feats" ark:- | \
-    modify-cmvn-stats "$fake_dims" ark:- ark,scp:$cmvndir/cmvn_$name.ark,$cmvndir/cmvn_$name.scp && \
-    echo "Error computing (partially fake) CMVN stats" && exit 1;
+  compute-cmvn-stats --spk2utt=ark:$data/spk2utt "$feats" ark:- | \
+    modify-cmvn-stats "$fake_dims" ark:- ark,scp:$cmvndir/cmvn_$name.ark,$cmvndir/cmvn_$name.scp
 else
-  ! compute-cmvn-stats --spk2utt=ark:$data/spk2utt "$feats" ark,scp:$cmvndir/cmvn_$name.ark,$cmvndir/cmvn_$name.scp \
-    2> $logdir/cmvn_$name.log && echo "Error computing CMVN stats" && exit 1;
+  compute-cmvn-stats --spk2utt=ark:$data/spk2utt "$feats" ark,scp:$cmvndir/cmvn_$name.ark,$cmvndir/cmvn_$name.scp
 fi
 
 cp $cmvndir/cmvn_$name.scp $data/cmvn.scp || exit 1;
@@ -99,3 +98,4 @@ if [ $nc -ne $nu ]; then
 fi
 
 echo "Succeeded creating CMVN stats for $name"
+}

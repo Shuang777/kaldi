@@ -6,13 +6,17 @@
 
 # This script derives a full-covariance UBM from DNN posteriors and
 # speaker recognition features.
+{
+set -e
+set -o pipefail
 
 # Begin configuration section.
 nj=40
 cmd="run.pl"
-stage=-2
+stage=0
 add_delta=true
 cmvn=true
+cmvn_opts="--norm-vars=false"
 vad=true
 nnet=
 feat_type=traps
@@ -21,8 +25,13 @@ feature_transform=
 use_gpu=no
 delta_window=3
 delta_order=2
-subsample=5
-# End configuration section.
+subsample=1
+dnnfeats2feats=none
+post_from=
+
+posterior_scale=1.0 # This scale helps to control for successve features being highly
+                    # correlated.  E.g. try 0.1 or 0.3
+# End configuration 
 
 echo "$0 $@"  # Print the command line for logging
 
@@ -86,22 +95,25 @@ feats=$feats" subsample-feats --n=$subsample ark:- ark:- |"
 ## set up nnet feature
 
 case $feat_type in
-  delta) nnet_feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- | add-deltas ark:- ark:- |";;
-  raw) nnet_feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- |";;
-  lda) nnet_feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $srcdir/final.mat ark:- ark:- |"
-   ;;
-  fmllr) nnet_feats="scp:$sdata_dnn/JOB/feats.scp"
-   ;;
-  traps) nnet_feats="scp:$sdata_dnn/JOB/feats.scp"
-   ;;
+  raw) nnet_feats="scp:$sdata_dnn/JOB/feats.scp";;
+  traps) nnet_feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- |";;
+  delta) nnet_feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- | add-deltas ark:- ark:- |";;
+  lda|fmllr) nnet_feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dnndir/final.mat ark:- ark:- |" ;;
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
+if [ $dnnfeats2feats == lda ]; then
+  feats=$nnet_feats
+  if [ $vad == true ]; then
+    feats=$feats" select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+  fi
+fi
 if [ ! -z "$transform_dir" ]; then
   echo "$0: using transforms from $transform_dir"
-  if [ "$feat_type" == "lda" ]; then
+  if [ "$feat_type" == "fmllr" ]; then
     [ ! -f $transform_dir/trans.1 ] && echo "$0: no such file $transform_dir/trans.1" && exit 1;
-    [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
-      && echo "$0: #jobs mismatch with transform-dir." && exit 1;
+    if [ "$nj" -ne "`cat $transform_dir/num_jobs`" ]; then
+      echo "$0: #jobs mismatch with transform-dir." && exit 1;
+    fi
     nnet_feats="$nnet_feats transform-feats --utt2spk=ark:$sdata_dnn/JOB/utt2spk ark,s,cs:$transform_dir/trans.JOB ark:- ark:- |"
   elif [[ "$feat_type" == "raw" || "$feat_type" == "fmllr" ]]; then
     [ ! -f $transform_dir/raw_trans.1 ] && echo "$0: no such file $transform_dir/raw_trans.1" && exit 1;
@@ -109,23 +121,46 @@ if [ ! -z "$transform_dir" ]; then
       && echo "$0: #jobs mismatch with transform-dir." && exit 1;
     nnet_feats="$nnet_feats transform-feats --utt2spk=ark:$sdata_dnn/JOB/utt2spk ark,s,cs:$transform_dir/raw_trans.JOB ark:- ark:- |"
   fi
-elif grep 'transform-feats --utt2spk' $srcdir/log/train.1.log >&/dev/null; then
+elif grep 'transform-feats --utt2spk' $dnndir/log/train.1.log >&/dev/null; then
   echo "$0: **WARNING**: you seem to be using a neural net system trained with transforms,"
   echo "  but you are not providing the --transform-dir option in test time."
 fi
 
-$cmd JOB=1:$nj $logdir/make_stats.JOB.log \
-  nnet-forward --frames-per-batch=4096 --feature-transform=$feature_transform \
-    --use-gpu=$use_gpu $nnet "$nnet_feats" ark:- \
-    \| select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- \
-    \| subsample-feats --n=$subsample ark:- ark:- \
-    \| prob-to-post ark:- ark:- \| \
-    fgmm-global-acc-stats-post ark:- $num_components "$feats" \
-    $dir/stats.JOB.acc || exit 1;
+if [ $dnnfeats2feats == fmllr ]; then
+  feats=$nnet_feats
+  if [ $vad == true ]; then
+    feats=$feats" select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+  fi
+fi
 
+if [ -z $post_from ]; then
+  if [ $stage -le 0 ]; then
+  $cmd JOB=1:$nj $logdir/post.JOB.log \
+    nnet-forward --frames-per-batch=4096 --feature-transform=$feature_transform \
+      --use-gpu=$use_gpu $nnet "$nnet_feats" ark:- \
+      \| select-voiced-frames ark:- scp,s,cs:$sdata_dnn/JOB/vad.scp ark:- \
+      \| prob-to-post ark:- ark:- \
+      \| scale-post ark:- $posterior_scale "ark:|gzip -c >$dir/post.JOB.gz"
+  fi
+else
+  [ -f $dir/post.1.gz ] && rm $dir/post.*.gz
+  (cd  $dir; for i in $(ls ../$(basename $post_from)/post.*.gz); do ln -s $i; done)
+fi
+
+if [ $stage -le 1 ]; then
+$cmd JOB=1:$nj $logdir/make_stats.JOB.log \
+  fgmm-global-acc-stats-post "ark:gunzip -c $dir/post.JOB.gz |" $num_components "$feats" \
+    $dir/stats.JOB.acc
+fi
+
+if [ $stage -le 2 ]; then
 $cmd $dir/log/init.log \
   fgmm-global-init-from-accs --verbose=2 \
   "fgmm-global-sum-accs - $dir/stats.*.acc |" $num_components \
-  $dir/final.ubm || exit 1;
+  $dir/final.ubm
+fi
+
+rm $dir/stats.*.acc
 
 exit 0;
+}

@@ -36,7 +36,7 @@ nj=10   # this is the number of separate queue jobs we run, but each one
         # run is nj * num_processes * num_threads, and the number of
         # separate pieces of data is nj * num_processes.
 num_threads=4
-num_processes=4 # each job runs this many processes, each with --num-threads threads
+num_processes=1 # each job runs this many processes, each with --num-threads threads
 cmd="run.pl"
 post_cmd=
 stage=-4
@@ -49,6 +49,8 @@ num_samples_for_weights=3 # smaller than the default for speed (relates to a sam
 cleanup=true
 posterior_scale=1.0 # This scale helps to control for successve features being highly
                     # correlated.  E.g. try 0.1 or 0.3
+compute_post=true     # posts are copied from else-where
+dnnfeats2feats=none
 sum_accs_opt=
 subsample=1
 
@@ -60,6 +62,7 @@ use_gpu=no
 
 add_delta=true
 cmvn=true
+cmvn_opts="--norm-vars=false"
 vad=true
 # End configuration section.
 
@@ -119,6 +122,7 @@ fi
 
 [ -f $dnndir/splice_opts ] && splice_opts=`cat $dnndir/splice_opts 2>/dev/null` # frame-splicing options           
 
+parallel_opts="-pe smp $[$num_threads*$num_processes]"
 ## Set up features.
 feats="ark,s,cs:copy-feats scp:$sdata/JOB/feats.scp ark:- |"
 if [ $add_delta == true ]; then
@@ -136,19 +140,22 @@ feats=$feats" subsample-feats --n=$subsample ark:- ark:- |"
 if [ -z "$nnet" ]; then nnet=$dnndir/final.nnet; fi
 if [ -z "$feature_transform" ]; then feature_transform=$dnndir/final.feature_transform; fi
 case $feat_type in
-  delta) nnet_feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- | add-deltas ark:- ark:- |";;
-  raw) nnet_feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- |";;
-  lda) nnet_feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $srcdir/final.mat ark:- ark:- |"
-   ;;
-  fmllr) nnet_feats="scp:$sdata_dnn/JOB/feats.scp"
-   ;;
-  traps) nnet_feats="scp:$sdata_dnn/JOB/feats.scp"
-   ;;
+  raw) nnet_feats="scp:$sdata_dnn/JOB/feats.scp";;
+  traps) nnet_feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- |";;
+  delta) nnet_feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- | add-deltas ark:- ark:- |";;
+  lda|fmllr) nnet_feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata_dnn/JOB/utt2spk scp:$sdata_dnn/JOB/cmvn.scp scp:$sdata_dnn/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dnndir/final.mat ark:- ark:- |" ;;
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
+if [ $dnnfeats2feats == lda ]; then
+  feats=$nnet_feats
+  if [ $vad == true ]; then
+    feats=$feats" select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+  fi
+  feats=$feats" subsample-feats --n=$subsample ark:- ark:- |"
+fi
 if [ ! -z "$transform_dir" ]; then
   echo "$0: using transforms from $transform_dir"
-  if [ "$feat_type" == "lda" ]; then
+  if [ "$feat_type" == "fmllr" ]; then
     [ ! -f $transform_dir/trans.1 ] && echo "$0: no such file $transform_dir/trans.1" && exit 1;
     [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
       && echo "$0: #jobs mismatch with transform-dir." && exit 1;
@@ -159,11 +166,18 @@ if [ ! -z "$transform_dir" ]; then
       && echo "$0: #jobs mismatch with transform-dir." && exit 1;
     nnet_feats="$nnet_feats transform-feats --utt2spk=ark:$sdata_dnn/JOB/utt2spk ark,s,cs:$transform_dir/raw_trans.JOB ark:- ark:- |"
   fi
-elif grep 'transform-feats --utt2spk' $srcdir/log/train.1.log >&/dev/null; then
+elif grep 'transform-feats --utt2spk' $dnndir/log/train.1.log >&/dev/null; then
   echo "$0: **WARNING**: you seem to be using a neural net system trained with transforms,"
   echo "  but you are not providing the --transform-dir option in test time."
 fi
 
+if [ $dnnfeats2feats == fmllr ]; then
+  feats=$nnet_feats
+  if [ $vad == true ]; then
+    feats=$feats" select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+  fi
+  feats=$feats" subsample-feats --n=$subsample ark:- ark:- |"
+fi
 
 # Initialize the i-vector extractor using the FGMM input
 if [ $stage -le -2 ]; then
@@ -176,22 +190,26 @@ if [ $stage -le -2 ]; then
 fi 
 
 # Do Gaussian selection and posterior extracion
+if [ $compute_post == true ]; then   # if not available, compute it
+  if [ $stage -le -1 ]; then
+    echo $nj_full > $dir/num_jobs
+    echo "$0: doing DNN posterior computation"
+    $post_cmd JOB=1:$nj_full $dir/log/post.JOB.log \
+    nnet-forward --frames-per-batch=4096 --feature-transform=$feature_transform \
+      --use-gpu=$use_gpu $nnet "$nnet_feats" ark:- \
+      \| select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- \
+      \| prob-to-post --min-post=$min_post ark,s,cs:- ark:- \| \
+      scale-post ark:- $posterior_scale "ark:|gzip -c >$dir/post.JOB.gz"
 
-if [ $stage -le -1 ]; then
-  echo $nj_full > $dir/num_jobs
-  echo "$0: doing DNN posterior computation"
-  $post_cmd JOB=1:$nj_full $dir/log/post.JOB.log \
-  nnet-forward --frames-per-batch=4096 --feature-transform=$feature_transform \
-    --use-gpu=$use_gpu $nnet "$nnet_feats" ark:- \
-  \| select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- \
-  \| prob-to-post --min-post=$min_post ark,s,cs:- ark:- \| \
-  scale-post ark:- $posterior_scale "ark:|gzip -c >$dir/post.JOB.gz" || exit 1;
-
-else
-  if ! [ $nj_full -eq $(cat $dir/num_jobs) ]; then
-    echo "Num-jobs mismatch $nj_full versus $(cat $dir/num_jobs)"
-    exit 1
+  else
+    if ! [ $nj_full -eq $(cat $dir/num_jobs) ]; then
+      echo "Num-jobs mismatch $nj_full versus $(cat $dir/num_jobs)"
+      exit 1
+    fi
   fi
+else      # copy from srcdir
+  [ -f $dir/post.1.gz ] && rm $dir/post.*.gz
+  (cd  $dir; for i in $(ls ../$(basename $srcdir)/post.*.gz); do ln -s $i; done)
 fi
 
 x=0
@@ -199,34 +217,42 @@ while [ $x -lt $num_iters ]; do
   if [ $stage -le $x ]; then
     [ -f $dir/.error ] && rm $dir/.error 2>/dev/null
 
-    Args=() # bash array of training commands for 1:nj, that put accs to stdout.
-    for j in $(seq $nj_full); do
-      Args[$j]=`echo "ivector-extractor-acc-stats --num-threads=$num_threads --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
-    done
-
     echo "Accumulating stats (pass $x)"
-    for g in $(seq $nj); do
-      start=$[$num_processes*($g-1)+1]
-      $cmd $parallel_opts $dir/log/acc.$x.$g.log \
-        ivector-extractor-sum-accs --parallel=true "${Args[@]:$start:$num_processes}" \
-          $dir/acc.$x.$g || touch $dir/.error &
-    done
-    wait
+    if [ $num_processes == 1 ]; then
+      $cmd $parallel_opts JOB=1:$nj $dir/log/acc.$x.JOB.log \
+        ivector-extractor-acc-stats --num-threads=$num_threads --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie "$feats" "ark,s,cs:gunzip -c $dir/post.JOB.gz|" "$dir/acc.$x.JOB"
+    else
+      echo "We do not support multiple processes now!"
+      exit 1;
+      Args=() # bash array of training commands for 1:nj, that put accs to stdout.
+      for j in $(seq $nj_full); do
+        Args[$j]=`echo "ivector-extractor-acc-stats --num-threads=$num_threads --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
+      done
+
+      for g in $(seq $nj); do
+        start=$[$num_processes*($g-1)+1]
+        $cmd $parallel_opts $dir/log/acc.$x.$g.log \
+          ivector-extractor-sum-accs --parallel=true "${Args[@]:$start:$num_processes}" \
+            $dir/acc.$x.$g || touch $dir/.error &
+      done
+      wait
+    fi
     [ -f $dir/.error ] && echo "Error accumulating stats on iteration $x" && exit 1;
-	accs=""
-	for j in $(seq $nj); do
-	  accs+="$dir/acc.$x.$j "
-	done
-	echo "Summing accs (pass $x)"
-	$cmd $sum_accs_opt $dir/log/sum_acc.$x.log \
-	  ivector-extractor-sum-accs $accs $dir/acc.$x || exit 1;
-    echo "Updating model (pass $x)"
-    nt=$[$num_threads*$num_processes] # use the same number of threads that
-                                      # each accumulation process uses, since we
-                                      # can be sure the queue will support this many.
-	$cmd -pe smp $nt $dir/log/update.$x.log \
-	  ivector-extractor-est --num-threads=$nt $dir/$x.ie $dir/acc.$x $dir/$[$x+1].ie || exit 1;
-	rm $dir/acc.$x.*
+	
+    accs=""
+  	for j in $(seq $nj); do
+  	  accs+="$dir/acc.$x.$j "
+  	done
+  	echo "Summing accs (pass $x)"
+  	$cmd $sum_accs_opt $dir/log/sum_acc.$x.log \
+  	  ivector-extractor-sum-accs $accs $dir/acc.$x || exit 1;
+      echo "Updating model (pass $x)"
+      nt=$[$num_threads*$num_processes] # use the same number of threads that
+                                        # each accumulation process uses, since we
+                                        # can be sure the queue will support this many.
+	  $cmd -pe smp $nt $dir/log/update.$x.log \
+  	  ivector-extractor-est --num-threads=$nt $dir/$x.ie $dir/acc.$x $dir/$[$x+1].ie || exit 1;
+	  rm $dir/acc.$x.*
     if $cleanup; then
       rm $dir/acc.$x
       # rm $dir/$x.ie

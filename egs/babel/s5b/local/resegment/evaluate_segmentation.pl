@@ -14,6 +14,7 @@
 # It computes # missed frames, # false positives and # overlapping frames.
 #
 ################################################################################
+print $0 . " ". (join " ", @ARGV) . "\n";
 
 if ($#ARGV == 1) {
   $ReferenceSegmentation = $ARGV[0];

@@ -29,8 +29,8 @@ nj=10   # this is the number of separate queue jobs we run, but each one
         # contains num_processes sub-jobs.. the real number of threads we 
         # run is nj * num_processes * num_threads, and the number of
         # separate pieces of data is nj * num_processes.
-num_threads=4
-num_processes=4 # each job runs this many processes, each with --num-threads threads
+num_threads=1
+num_processes=1 # each job runs this many processes, each with --num-threads threads
 cmd="run.pl"
 stage=-4
 num_gselect=20 # Gaussian-selection using diagonal model: number of Gaussians to select
@@ -154,7 +154,7 @@ while [ $x -lt $num_iters ]; do
         cat $dir/log/search.$x.log
       else 
         echo "Start searching for lambda"
-        myutils/search.pl "$cmd $parallel_opts JOB=1:$nj $dir/log/lambda_cv.$x.cv#0.JOB.log ivector-extractor-cross-validation --cv-share=$cv_share --lambda=#0 --num-threads=4 --num-samples-for-weights=3 $dir/$x.ie \"$feats\" \"ark,s,cs:gunzip -c $dir/post.JOB.gz|\" &> $dir/log/lambda_cv.$x.err.log && grep 'Log residue' $dir/log/lambda_cv.$x.cv#0.[0-9]*.log | awk 'BEGIN{a=0} {a+=exp(\$6)} END{printf \"%f\",a}'" | tee $dir/log/search.$x.log
+        myutils/search.pl "$cmd $parallel_opts JOB=1:$nj $dir/log/lambda_cv.$x.cv#0.JOB.log ivector-extractor-cross-validation --cv-share=$cv_share --lambda=#0 --num-threads=$num_threads --num-samples-for-weights=3 $dir/$x.ie \"$feats\" \"ark,s,cs:gunzip -c $dir/post.JOB.gz|\" &> $dir/log/lambda_cv.$x.err.log && grep 'Log residue' $dir/log/lambda_cv.$x.cv#0.[0-9]*.log | awk 'BEGIN{a=0} {a+=exp(\$6)} END{printf \"%f\",a}'" | tee $dir/log/search.$x.log
         touch $dir/.done.search.$x
       fi
 
@@ -166,20 +166,29 @@ while [ $x -lt $num_iters ]; do
       best_lambda=$lambda
     fi
 
-    Args=() # bash array of training commands for 1:nj, that put accs to stdout.
-    for j in $(seq $nj_full); do
-      Args[$j]=`echo "ivector-extractor-acc-stats --compute-auxf=$compute_auxf --update-variances=$update_variances --num-threads=$num_threads --compute-auxf=$compute_auxf --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
-    done
+    if [ $num_processes == 1 ]; then
+      $cmd $parallel_opts JOB=1:$nj $dir/log/acc.$x.JOB.log \
+        ivector-extractor-acc-stats --num-threads=$num_threads --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie "$feats" "ark,s,cs:gunzip -c $dir/post.JOB.gz|" "$dir/acc.$x.JOB"
+    else
+      echo "We do not support multiple processes now!"
+      exit 1;
 
-    echo "Accumulating stats (pass $x)"
-    for g in $(seq $nj); do
-      start=$[$num_processes*($g-1)+1]
-      $cmd $parallel_opts $dir/log/acc.$x.$g.log \
-        ivector-extractor-sum-accs --parallel=true "${Args[@]:$start:$num_processes}" \
-          $dir/acc.$x.$g || touch $dir/.error &
-    done
-    wait
+      Args=() # bash array of training commands for 1:nj, that put accs to stdout.
+      for j in $(seq $nj_full); do
+        Args[$j]=`echo "ivector-extractor-acc-stats --compute-auxf=$compute_auxf --update-variances=$update_variances --num-threads=$num_threads --compute-auxf=$compute_auxf --num-samples-for-weights=$num_samples_for_weights $dir/$x.ie '$feats' 'ark,s,cs:gunzip -c $dir/post.JOB.gz|' -|" | sed s/JOB/$j/g`
+      done
+
+      echo "Accumulating stats (pass $x)"
+      for g in $(seq $nj); do
+        start=$[$num_processes*($g-1)+1]
+        $cmd $parallel_opts $dir/log/acc.$x.$g.log \
+          ivector-extractor-sum-accs --parallel=true "${Args[@]:$start:$num_processes}" \
+            $dir/acc.$x.$g || touch $dir/.error &
+      done
+      wait
+    fi
     [ -f $dir/.error ] && echo "Error accumulating stats on iteration $x" && exit 1;
+
     accs=""
     for j in $(seq $nj); do
       accs+="$dir/acc.$x.$j "

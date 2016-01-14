@@ -126,13 +126,14 @@ if (@ARGV > 0) {
   }
   if ($jobsperbatch == 0){
     $jobsperbatch = $totaljobend - $totaljobstart + 1;
+    if ($jobsperbatch > 30) {
+      print STDERR "Warning: jobs per batch restricted to 30\n";
+      $jobsperbatch = 30;
+    }
   }
+  print "jobsperbatch is $jobsperbatch\n";
 }   # parse argument done
 
-if ($jobsperbatch > 64) {
-  print STDERR "Warning: jobs per batch restricted to 64\n";
-  $jobsperbatch = 64;
-}
 if ($mode eq 'cmdline') {
   $logfile = shift @ARGV;
 
