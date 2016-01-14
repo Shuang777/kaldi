@@ -196,6 +196,7 @@
 /src/featbin/wav-to-duration
 /src/featbin/compute-ti-fbank-feats
 /src/featbin/compute-ti-mfcc-feats
+/src/featbin/filter-transform
 
 # /src/fgmmbin/
 /src/fgmmbin/.depend.mk

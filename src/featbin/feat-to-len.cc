@@ -36,6 +36,9 @@ int main(int argc, char *argv[]) {
         "or: feat-to-len scp:feats.scp\n";
     
     ParseOptions po(usage);
+    
+    bool matrix_input = true;
+    po.Register("matrix-input", &matrix_input, "read in scp of feature matrixes (true) or vectors (false) (default = true)");
 
     po.Read(argc, argv);
 
@@ -49,16 +52,27 @@ int main(int argc, char *argv[]) {
       std::string wspecifier = po.GetArg(2);
 
       Int32Writer length_writer(wspecifier);
-
-      SequentialBaseFloatMatrixReader matrix_reader(rspecifier);
-      for (; !matrix_reader.Done(); matrix_reader.Next())
-        length_writer.Write(matrix_reader.Key(), matrix_reader.Value().NumRows());
+      if (matrix_input) {
+        SequentialBaseFloatMatrixReader matrix_reader(rspecifier);
+        for (; !matrix_reader.Done(); matrix_reader.Next())
+          length_writer.Write(matrix_reader.Key(), matrix_reader.Value().NumRows());
+      } else {
+        SequentialBaseFloatVectorReader vector_reader(rspecifier);
+        for (; !vector_reader.Done(); vector_reader.Next())
+          length_writer.Write(vector_reader.Key(), vector_reader.Value().Dim());
+      }
     } else {
       int64 tot = 0;
       std::string rspecifier = po.GetArg(1);
-      SequentialBaseFloatMatrixReader matrix_reader(rspecifier);
-      for (; !matrix_reader.Done(); matrix_reader.Next())
-        tot += matrix_reader.Value().NumRows();
+      if (matrix_input) {
+        SequentialBaseFloatMatrixReader matrix_reader(rspecifier);
+        for (; !matrix_reader.Done(); matrix_reader.Next())
+          tot += matrix_reader.Value().NumRows();
+      } else {
+        SequentialBaseFloatVectorReader vector_reader(rspecifier);
+        for (; !vector_reader.Done(); vector_reader.Next())
+          tot += vector_reader.Value().Dim();
+      }
       std::cout << tot << std::endl;
     }
     return 0;

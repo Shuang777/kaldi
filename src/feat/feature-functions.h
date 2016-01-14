@@ -29,10 +29,42 @@
 #include "util/common-utils.h"
 #include "base/kaldi-error.h"
 #include "feat/mel-computations.h"
+#include "feat/ti-mel-computations.h"
 
 namespace kaldi {
 /// @addtogroup  feat FeatureExtraction
 /// @{
+
+struct TiMelBanksOptions {
+  BaseFloat low_freq;  // e.g. 20; lower frequency cutoff
+  BaseFloat high_freq;  // an upper frequency cutoff; 0 -> no cutoff, negative
+  // ->added to the Nyquist frequency to get the cutoff.
+  BaseFloat vtln_low;  // vtln lower cutoff of warping function.
+  BaseFloat vtln_high;  // vtln upper cutoff of warping function: if negative, added
+                        // to the Nyquist frequency to get the cutoff.
+  bool debug_mel;
+  // htk_mode is a "hidden" config, it does not show up on command line.
+  // Enables more exact compatibibility with HTK, for testing purposes.  Affects
+  // mel-energy flooring and reproduces a bug in HTK.
+  bool htk_mode;
+  explicit TiMelBanksOptions()
+      : low_freq(20), high_freq(0), vtln_low(100),
+        vtln_high(-500), debug_mel(false), htk_mode(false) {}
+
+  void Register(OptionsItf *po) {
+    po->Register("low-freq", &low_freq,
+                 "Low cutoff frequency for mel bins");
+    po->Register("high-freq", &high_freq,
+                 "High cutoff frequency for mel bins (if < 0, offset from Nyquist)");
+    po->Register("vtln-low", &vtln_low,
+                 "Low inflection point in piecewise linear VTLN warping function");
+    po->Register("vtln-high", &vtln_high,
+                 "High inflection point in piecewise linear VTLN warping function"
+                 " (if negative, offset from high-mel-freq");
+    po->Register("debug-mel", &debug_mel,
+                 "Print out debugging information for mel bin computation");
+  }
+};
 
 
 struct MelBanksOptions {

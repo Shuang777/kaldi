@@ -10,7 +10,8 @@ TESTFILES = feature-mfcc-test feature-plp-test feature-fbank-test \
 
 OBJFILES = feature-functions.o feature-mfcc.o feature-plp.o feature-fbank.o \
            feature-spectrogram.o mel-computations.o wave-reader.o \
-           pitch-functions.o resample.o online-feature.o
+           pitch-functions.o resample.o online-feature.o ti-mel-computations.o \
+					 feature-ti-fbank.o feature-ti-mfcc.o
 
 LIBNAME = kaldi-feat
 
