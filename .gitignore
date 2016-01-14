@@ -391,7 +391,7 @@
 /src/ivectorbin/ivector-compute-dot-distance
 /src/ivectorbin/ivector-prep-pairs
 /src/ivectorbin/ivector-prep-product
-
+/src/ivectorbin/compare-vad
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk
