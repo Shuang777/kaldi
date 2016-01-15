@@ -4,7 +4,7 @@ all:
 EXTRA_CXXFLAGS = -Wno-sign-compare
 include ../kaldi.mk
 
-BINFILES = gen-gmm-supervector ivector-model-init
+BINFILES = gen-gmm-supervector ivector-model-init ivector2-extract
 
 OBJFILES =
 

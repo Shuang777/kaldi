@@ -76,6 +76,62 @@ void IvectorExtractorInitStats::AccStats(const MatrixBase<BaseFloat> &feats) {
   num_samples++;
 }
 
+IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, int32 feat_dim, int32 num_gauss) {
+  mu_.Resize(num_gauss * feat_dim);
+  A_.resize(num_gauss);
+  Psi_inv_.resize(num_gauss);
+  for (int32 i = 0; i < num_gauss; i++) {
+    A_[i].Resize(feat_dim, opts.ivector_dim);
+    Psi_inv_[i].Resize(feat_dim);
+  }
+}
+
+IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, const IvectorExtractorInitStats &stats) {
+  int32 num_gauss = stats.scatter.size();
+  int32 feat_dim = stats.sum_acc.Dim() / num_gauss;
+
+  mu_.Resize(num_gauss * feat_dim);
+  mu_.AddVec(1.0 / stats.num_samples, stats.sum_acc);
+
+  A_.resize(num_gauss);
+  Psi_inv_.resize(num_gauss);
+  for (int32 i = 0; i < num_gauss; i++) {
+    A_[i].Resize(feat_dim, opts.ivector_dim);
+    Psi_inv_[i].Resize(feat_dim);
+    Psi_inv_[i].AddSp(1.0 / stats.num_samples, stats.scatter[i]);
+    SubVector<double> gaussVec(mu_, i * feat_dim, feat_dim);
+    Psi_inv_[i].AddVec2(-1.0, gaussVec);
+    Psi_inv_[i].Invert();
+  }
+}
+
+void IvectorExtractor::GetIvectorDistribution(const MatrixBase<BaseFloat> &feats, VectorBase<double> *mean,
+                                              double *auxf) const {
+  KALDI_ASSERT(feats.NumRows() == 1);
+  Vector<double> supvervector(feats.NumCols());
+  supvervector.CopyRowFromMat(feats, 0);
+  supvervector.AddVec(-1.0, mu_);
+  Vector<double> linear(IvectorDim());
+  int32 feat_dim = FeatDim();
+  for (int32 i = 0; i < NumGauss(); i++) {
+    SubVector<double> x(supvervector, i*feat_dim, feat_dim);
+    linear.AddMatVec(1.0, Psi_Inv_A_[i], kTrans, x, 1.0);
+  }
+  mean->AddSpVec(1.0, Var_, linear, 0.0);
+}
+  
+void IvectorExtractor::ComputeDerivedValues() {
+  Var_.Resize(IvectorDim());
+  Psi_Inv_A_.resize(NumGauss());
+  for (int32 i = 0; i < NumGauss(); i++) {
+    Psi_Inv_A_[i].Resize(FeatDim(), IvectorDim());
+    Psi_Inv_A_[i].AddSpMat(1.0, Psi_inv_[i], A_[i], kNoTrans, 1.0);
+    Var_.AddMat2Sp(1.0, A_[i], kTrans, Psi_inv_[i], 1.0);
+  }
+  Var_.AddToDiag(1.0);
+  Var_.Invert();
+}
+
 void IvectorExtractor::Write(std::ostream &os, bool binary, const bool write_derived /* = false */) const {
   WriteToken(os, binary, "<IvectorExtractor2>");
   WriteToken(os, binary, "<mu>");
@@ -89,11 +145,11 @@ void IvectorExtractor::Write(std::ostream &os, bool binary, const bool write_der
   KALDI_ASSERT(size == static_cast<int32>(Psi_inv_.size()));
   for (int32 i = 0; i < size; i++)
     Psi_inv_[i].Write(os, binary);
-  WriteToken(os, binary, "</IvectorExtractor>");
+  WriteToken(os, binary, "</IvectorExtractor2>");
 }
 
 void IvectorExtractor::Read(std::istream &is, bool binary, const bool read_derived /* = false */) {
-  ExpectToken(is, binary, "<IvectorExtractor>");
+  ExpectToken(is, binary, "<IvectorExtractor2>");
   ExpectToken(is, binary, "<mu>");
   mu_.Read(is, binary);
   ExpectToken(is, binary, "<A>");  
@@ -107,7 +163,9 @@ void IvectorExtractor::Read(std::istream &is, bool binary, const bool read_deriv
   Psi_inv_.resize(size);
   for (int32 i = 0; i < size; i++)
     Psi_inv_[i].Read(is, binary);
-  ExpectToken(is, binary, "</IvectorExtractor>");
+  ExpectToken(is, binary, "</IvectorExtractor2>");
+
+  ComputeDerivedValues();
 }
 
 

@@ -74,46 +74,34 @@ class IvectorExtractor {
  public:
   friend class IvectorExtractorInitStats;
 
-  IvectorExtractor(const IvectorExtractorOptions &opts, int32 feat_dim, int32 num_gauss) {
-    mu_.Resize(num_gauss * feat_dim);
-    A_.resize(num_gauss);
-    Psi_inv_.resize(num_gauss);
-    for (int32 i = 0; i < num_gauss; i++) {
-      A_[i].Resize(feat_dim, opts.ivector_dim);
-      Psi_inv_[i].Resize(feat_dim);
-    }
-  }
+  IvectorExtractor() {}
+
+  IvectorExtractor(const IvectorExtractorOptions &opts, int32 feat_dim, int32 num_gauss);
   
-  IvectorExtractor(const IvectorExtractorOptions &opts, const IvectorExtractorInitStats &stats) {
-    int32 num_gauss = stats.scatter.size();
-    int32 feat_dim = stats.sum_acc.Dim() / num_gauss;
+  IvectorExtractor(const IvectorExtractorOptions &opts, const IvectorExtractorInitStats &stats);
 
-    mu_.Resize(num_gauss * feat_dim);
-    mu_.AddVec(1.0 / stats.num_samples, stats.sum_acc);
+  int32 FeatDim() const {  return A_.front().NumRows(); }
 
-    A_.resize(num_gauss);
-    Psi_inv_.resize(num_gauss);
-    for (int32 i = 0; i < num_gauss; i++) {
-      A_[i].Resize(feat_dim, opts.ivector_dim);
-      Psi_inv_[i].Resize(feat_dim);
-      Psi_inv_[i].AddSp(1.0 / stats.num_samples, stats.scatter[i]);
-      SubVector<double> gaussVec(mu_, i * feat_dim, feat_dim);
-      Psi_inv_[i].AddVec2(-1.0, gaussVec);
-    }
-  }
+  int32 IvectorDim() const {  return A_.front().NumCols(); }
 
-  int32 IvectorDim() {
-    return A_.front().NumCols();
-  }
+  int32 NumGauss() const {  return A_.size(); }
 
   void Write(std::ostream &os, bool binary, const bool write_derived = false) const;
+
   void Read(std::istream &is, bool binary, const bool read_derived = false) ;
+
+  void GetIvectorDistribution(const MatrixBase<BaseFloat> &vecs, VectorBase<double> *mean, double *auxf = NULL) const;
+
+  void ComputeDerivedValues();
 
 private:
   Vector<double> mu_;
-  std::vector< Matrix< double > > A_;
-  std::vector< SpMatrix< double > > Psi_inv_;
+  std::vector<Matrix<double> > A_;
+  std::vector<SpMatrix<double> > Psi_inv_;
 
+  // derived values
+  std::vector<Matrix<double> > Psi_Inv_A_;
+  SpMatrix<double> Var_;
 };
 
 }  // namespace ivector2

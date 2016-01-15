@@ -16,6 +16,9 @@
 *.la
 *.a
 
+# vim temp file
+*.swp
+
 # some weird thing that MacOs creates.
 *.dSYM
 
@@ -392,6 +395,12 @@
 /src/ivectorbin/ivector-prep-pairs
 /src/ivectorbin/ivector-prep-product
 /src/ivectorbin/compare-vad
+
+# /src/ivector2bin/
+/src/ivector2bin/.depend.mk
+/src/ivector2bin/gen-gmm-supervector
+/src/ivector2bin/ivector-model-init
+/src/ivector2bin/ivector2-extract
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk
@@ -900,6 +909,7 @@
 /src/online2bin/.depend.mk
 /src/online2/.depend.mk
 /src/ivector/.depend.mk
+/src/ivector2/.depend.mk
 /egs/librispeech/s5/data
 /egs/librispeech/s5/mfcc
 /egs/librispeech/s5/exp
