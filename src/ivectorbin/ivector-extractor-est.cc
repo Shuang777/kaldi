@@ -25,6 +25,7 @@ int main(int argc, char *argv[]) {
   try {
     typedef kaldi::int32 int32;
     using namespace kaldi;
+    using namespace kaldi::ivector;
     
     const char *usage =
         "Do model re-estimation of iVector extractor (this is\n"

@@ -23,6 +23,8 @@
 
 namespace kaldi {
 
+namespace ivector{
+
 int32 IvectorExtractor::FeatDim() const {
   KALDI_ASSERT(!M_.empty());
   return M_[0].NumRows();
@@ -1905,5 +1907,6 @@ void IvectorExtractorCVStats::AccValidStatsForUtterance(const IvectorExtractor &
 
 }
 
+} // namespace ivector
 
 } // namespace kaldi

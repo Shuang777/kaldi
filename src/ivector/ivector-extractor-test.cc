@@ -23,6 +23,8 @@
 
 namespace kaldi {
 
+namespace ivector{
+
 void TestIvectorExtractorIO(const IvectorExtractor &extractor) {
   std::ostringstream ostr;
   bool binary = (Rand() % 2 == 0);
@@ -208,10 +210,12 @@ void UnitTestIvectorExtractor() {
   std::cout << "********************************************************************************************\n";
 }
 
-}
+} //  namespace ivector
+} //  namespace kaldi
 
 int main() {
   using namespace kaldi;
+  using namespace kaldi::ivector;
   SetVerboseLevel(5);
   for (int i = 0; i < 10; i++)
     UnitTestIvectorExtractor();

@@ -27,6 +27,7 @@
 
 namespace kaldi {
 
+using namespace kaldi::ivector;
 // This class will be used to parallelize over multiple threads the job
 // that this program does.  The work happens in the operator (), the
 // output happens in the destructor.
@@ -104,6 +105,7 @@ class IvectorExtractTask {
 
 int main(int argc, char *argv[]) {
   using namespace kaldi;
+  using namespace kaldi::ivector;
   typedef kaldi::int32 int32;
   typedef kaldi::int64 int64;
   try {

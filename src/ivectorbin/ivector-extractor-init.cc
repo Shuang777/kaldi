@@ -27,6 +27,7 @@
 int main(int argc, char *argv[]) {
   try {
     using namespace kaldi;
+    using namespace kaldi::ivector;
     using kaldi::int32;
 
     const char *usage =

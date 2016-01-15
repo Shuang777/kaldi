@@ -148,8 +148,6 @@ typedef StdVectorRandomizer<int32> Int32VectorRandomizer;
 typedef StdVectorRandomizer<std::vector<std::pair<int32, BaseFloat> > > PosteriorRandomizer;
 
 
-
-
 } // namespace kaldi
 
 #endif

@@ -32,6 +32,8 @@
 
 namespace kaldi {
 
+namespace ivector {
+
 // Note, throughout this file we use SGMM-type notation because
 // that's what I'm comfortable with.
 // Dimensions:
@@ -724,6 +726,7 @@ class IvectorExtractorCVStats {
 };
 
 
+}  // namespace ivector
 
 }  // namespace kaldi
 

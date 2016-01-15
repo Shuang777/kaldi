@@ -185,5 +185,4 @@ const std::vector<T>& StdVectorRandomizer<T>::LeftOverValue() {
 template class StdVectorRandomizer<int32>;
 template class StdVectorRandomizer<std::vector<std::pair<int32, BaseFloat> > >; //PosteriorRandomizer
 
-
-}
+} // namespace kaldi

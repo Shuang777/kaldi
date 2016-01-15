@@ -28,6 +28,7 @@
 
 int main(int argc, char *argv[]) {
   using namespace kaldi;
+  using namespace kaldi::ivector;
   typedef kaldi::int32 int32;
   typedef kaldi::int64 int64;
   try {
