@@ -9,13 +9,13 @@ SUBDIRS = base matrix util feat tree thread gmm transform sgmm \
           fstext hmm lm decoder lat cudamatrix nnet \
           bin fstbin gmmbin fgmmbin sgmmbin featbin \
           nnetbin latbin sgmm2 sgmm2bin nnet2 nnet2bin kwsbin \
-          ivector ivectorbin online2 online2bin lmbin
+          ivector ivectorbin online2 online2bin lmbin ivector2 ivector2bin
 
 MEMTESTDIRS = base matrix util feat tree thread gmm transform sgmm \
           fstext hmm lm decoder lat nnet \
           bin fstbin gmmbin fgmmbin sgmmbin featbin \
           nnetbin latbin sgmm2 nnet2 nnet2bin sgmm2bin kwsbin \
-          ivector ivectorbin online2 online2bin lmbin
+          ivector ivectorbin online2 online2bin lmbin ivector2 ivector2bin
 
 CUDAMEMTESTDIR = cudamatrix
 
@@ -145,9 +145,9 @@ $(EXT_SUBDIRS) : mklibdir
 # this is necessary for correct parallel compilation
 #1)The tools depend on all the libraries
 
-bin fstbin gmmbin fgmmbin sgmmbin sgmm2bin featbin nnetbin nnet2bin latbin ivectorbin lmbin: \
+bin fstbin gmmbin fgmmbin sgmmbin sgmm2bin featbin nnetbin nnet2bin latbin ivectorbin lmbin ivector2bin: \
  base matrix util feat tree optimization thread gmm transform sgmm sgmm2 fstext hmm \
- lm decoder lat cudamatrix nnet nnet2 ivector
+ lm decoder lat cudamatrix nnet nnet2 ivector ivector2
 
 #2)The libraries have inter-dependencies
 base:
@@ -170,6 +170,7 @@ cudamatrix: base util matrix
 nnet: base util matrix cudamatrix
 nnet2: base util matrix thread lat
 ivector: base util matrix thread transform tree gmm 
+ivector2: base util matrix transform gmm
 #3)Dependencies for optional parts of Kaldi
 onlinebin: base matrix util feat tree optimization gmm transform sgmm sgmm2 fstext hmm lm decoder lat cudamatrix nnet nnet2 online
 online2bin: base matrix util feat tree optimization gmm transform sgmm sgmm2 fstext hmm lm decoder lat cudamatrix nnet nnet2 online2
