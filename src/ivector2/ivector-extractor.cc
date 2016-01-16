@@ -51,29 +51,97 @@ void IvectorExtractorUtteranceStats::AccStats(
   } 
 }
 
-void IvectorExtractorUtteranceStats::GetSupervector(Vector<BaseFloat> & supervector){
+void IvectorExtractorUtteranceStats::GetSupervector(Vector<double> & supervector){
   int32 num_gauss = X_.NumRows(),
         feat_dim = X_.NumCols();
   supervector.Resize(num_gauss * feat_dim);
   for (int32 i = 0; i < num_gauss; i++) {
-    SubVector<BaseFloat> subSupervector(supervector, i*feat_dim, feat_dim);
+    SubVector<double> subSupervector(supervector, i*feat_dim, feat_dim);
     SubVector<double> subSuperMatrix(X_, i);
     if (gamma_(i) != 0)
       subSupervector.AddVec(1 / gamma_(i), subSuperMatrix);
   }
 }
 
-void IvectorExtractorInitStats::AccStats(const MatrixBase<BaseFloat> &feats) {
-  KALDI_ASSERT(feats.NumRows() == 1);
-  SubVector<BaseFloat> superVec(feats, 0);
-  sum_acc.AddVec(1.0, superVec);
+void IvectorExtractorInitStats::AccStats(const VectorBase<double> &supervector) {
+  sum_acc.AddVec(1.0, supervector);
   int32 num_gauss = scatter.size();
   int32 feat_dim = scatter.front().NumRows();
   for (int32 i = 0; i < num_gauss; i++) {
-    SubVector<BaseFloat> gaussVec(superVec, i*feat_dim, feat_dim);
+    SubVector<double> gaussVec(supervector, i*feat_dim, feat_dim);
     scatter[i].AddVec2 (1.0, gaussVec);
   }
   num_samples++;
+}
+
+IvectorExtractorStats::IvectorExtractorStats(const IvectorExtractor& extractor,
+                                             const IvectorExtractorStatsOptions& stats_opts):
+                                             config_(stats_opts) {
+  supV_iV_.resize(extractor.NumGauss());
+  supV_supV_.resize(extractor.NumGauss());
+  iV_iV_.Resize(extractor.IvectorDim());
+  for (int32 i = 0; i < extractor.NumGauss(); i++) {
+    supV_iV_[i].Resize(extractor.FeatDim(), extractor.IvectorDim());
+    supV_supV_[i].Resize(extractor.FeatDim());
+  }
+}
+
+
+void IvectorExtractorStats::AccStatsForUtterance(const IvectorExtractor &extractor, 
+                                                 const VectorBase<double> &supervector) {
+  Vector<double> ivector(extractor.IvectorDim());
+  Vector<double> normalized_supervector(supervector.Dim());
+  if (!config_.random_ivector)
+    extractor.GetIvectorDistribution(supervector, &ivector, &normalized_supervector);
+  else
+    ivector.SetRandn();
+  iV_iV_.AddVec2(1.0, ivector);
+  for (int32 i = 0; i < extractor.NumGauss(); i++) {
+    SubVector<double> gaussvector(normalized_supervector, i*extractor.FeatDim(), extractor.FeatDim());
+    supV_iV_[i].AddVecVec(1.0, gaussvector, ivector);
+    supV_supV_[i].AddVec2(1.0, gaussvector);
+  }
+  num_ivectors_++;
+}
+
+void IvectorExtractorStats::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<IvectorExtractorStats2>");
+  WriteToken(os, binary, "<supViV>");
+  int32 size = supV_iV_.size();
+  WriteBasicType(os, binary, size);
+  for (int32 i = 0; i < size; i++)
+    supV_iV_[i].Write(os, binary);
+  WriteToken(os, binary, "<iViV>");
+  iV_iV_.Write(os, binary);
+  WriteToken(os, binary, "<supVsupV>");
+  size = supV_supV_.size();
+  WriteBasicType(os, binary, size);
+  for (int32 i = 0; i < size; i++)
+    supV_supV_[i].Write(os, binary);
+  WriteToken(os, binary, "<NumIvectors>");
+  WriteBasicType(os, binary, num_ivectors_);
+  WriteToken(os, binary, "</IvectorExtractorStats2>");
+}
+
+void IvectorExtractorStats::Read(std::istream &is, bool binary, bool add) {
+  ExpectToken(is, binary, "<IvectorExtractorStats2>");
+  ExpectToken(is, binary, "<supViV>");
+  int32 size;
+  ReadBasicType(is, binary, &size);
+  supV_iV_.resize(size);
+  for (int32 i = 0; i < size; i++)
+    supV_iV_[i].Read(is, binary, add);
+  ExpectToken(is, binary, "<iViV>");
+  iV_iV_.Read(is, binary, add);
+  ExpectToken(is, binary, "<supVsupV>");
+  ReadBasicType(is, binary, &size);
+  supV_supV_.resize(size);
+  for (int32 i = 0; i < size; i++)
+    supV_supV_[i].Read(is, binary, add);
+  ExpectToken(is, binary, "<NumIvectors>");
+  ReadBasicType(is, binary, &num_ivectors_, add);
+  ExpectToken(is, binary, "</IvectorExtractorStats2>");
+
 }
 
 IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, int32 feat_dim, int32 num_gauss) {
@@ -105,27 +173,28 @@ IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, const Iv
   }
 }
 
-void IvectorExtractor::GetIvectorDistribution(const MatrixBase<BaseFloat> &feats, VectorBase<double> *mean,
-                                              double *auxf) const {
-  KALDI_ASSERT(feats.NumRows() == 1);
-  Vector<double> supvervector(feats.NumCols());
-  supvervector.CopyRowFromMat(feats, 0);
-  supvervector.AddVec(-1.0, mu_);
+void IvectorExtractor::GetIvectorDistribution(const VectorBase<double> &supervector, VectorBase<double> *mean,
+                                              VectorBase<double> *normalized_supvervector, double *auxf) const {
+  if (normalized_supvervector == NULL)
+    normalized_supvervector = new Vector<double> (supervector);
+  else
+    normalized_supvervector->CopyFromVec(supervector);
+  normalized_supvervector->AddVec(-1.0, mu_);
   Vector<double> linear(IvectorDim());
   int32 feat_dim = FeatDim();
   for (int32 i = 0; i < NumGauss(); i++) {
-    SubVector<double> x(supvervector, i*feat_dim, feat_dim);
-    linear.AddMatVec(1.0, Psi_Inv_A_[i], kTrans, x, 1.0);
+    SubVector<double> x(*normalized_supvervector, i*feat_dim, feat_dim);
+    linear.AddMatVec(1.0, Psi_inv_A_[i], kTrans, x, 1.0);
   }
   mean->AddSpVec(1.0, Var_, linear, 0.0);
 }
   
 void IvectorExtractor::ComputeDerivedValues() {
   Var_.Resize(IvectorDim());
-  Psi_Inv_A_.resize(NumGauss());
+  Psi_inv_A_.resize(NumGauss());
   for (int32 i = 0; i < NumGauss(); i++) {
-    Psi_Inv_A_[i].Resize(FeatDim(), IvectorDim());
-    Psi_Inv_A_[i].AddSpMat(1.0, Psi_inv_[i], A_[i], kNoTrans, 1.0);
+    Psi_inv_A_[i].Resize(FeatDim(), IvectorDim());
+    Psi_inv_A_[i].AddSpMat(1.0, Psi_inv_[i], A_[i], kNoTrans, 1.0);
     Var_.AddMat2Sp(1.0, A_[i], kTrans, Psi_inv_[i], 1.0);
   }
   Var_.AddToDiag(1.0);

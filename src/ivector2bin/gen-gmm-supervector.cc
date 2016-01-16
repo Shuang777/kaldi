@@ -50,13 +50,13 @@ int main(int argc, char *argv[]) {
 
     SequentialBaseFloatMatrixReader feature_reader(feature_rspecifier);
     RandomAccessPosteriorReader posteriors_reader(posteriors_rspecifier);
-    BaseFloatVectorWriter supervector_writer(supvector_wspecifier);
+    DoubleVectorWriter supervector_writer(supvector_wspecifier);
 
     IvectorExtractorUtteranceStats stats;
 
     int32 num_done = 0, num_err = 0;
 
-    Vector<BaseFloat> supervector;
+    Vector<double> supervector;
     for (; !feature_reader.Done(); feature_reader.Next()) {
       std::string key = feature_reader.Key();
       if (!posteriors_reader.HasKey(key)) {
@@ -82,7 +82,7 @@ int main(int argc, char *argv[]) {
 
       stats.GetSupervector(supervector);
       
-      supervector_writer.Write(key, Vector<BaseFloat>(supervector));
+      supervector_writer.Write(key, supervector);
 
       num_done++;
      

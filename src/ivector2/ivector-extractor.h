@@ -37,7 +37,7 @@ class IvectorExtractorUtteranceStats {
   
   void Reset(int32 num_gauss, int32 feat_dim);
 
-  void GetSupervector(Vector<BaseFloat> & supervector);
+  void GetSupervector(Vector<double> & supervector);
 
  protected:
   Vector<double> gamma_; // zeroth-order stats (summed posteriors), dimension [I]
@@ -62,9 +62,9 @@ class IvectorExtractorInitStats {
     }
   }
   
-  void AccStats(const MatrixBase<BaseFloat> &feats);
+  void AccStats(const VectorBase<double> &feats);
 
-private: 
+ private: 
   Vector<double> sum_acc;
   std::vector<SpMatrix<double> > scatter;
   int32 num_samples;
@@ -90,7 +90,8 @@ class IvectorExtractor {
 
   void Read(std::istream &is, bool binary, const bool read_derived = false) ;
 
-  void GetIvectorDistribution(const MatrixBase<BaseFloat> &vecs, VectorBase<double> *mean, double *auxf = NULL) const;
+  void GetIvectorDistribution(const VectorBase<double> &supervector, VectorBase<double> *mean, 
+                              VectorBase<double> *normalized_supvervector = NULL, double *auxf = NULL) const;
 
   void ComputeDerivedValues();
 
@@ -100,9 +101,42 @@ private:
   std::vector<SpMatrix<double> > Psi_inv_;
 
   // derived values
-  std::vector<Matrix<double> > Psi_Inv_A_;
+  std::vector<Matrix<double> > Psi_inv_A_;
   SpMatrix<double> Var_;
 };
+
+struct IvectorExtractorStatsOptions {
+  bool random_ivector;
+
+  IvectorExtractorStatsOptions(): random_ivector(false) { }
+  void Register(OptionsItf *po) {
+    po->Register("random-ivector", &random_ivector, "If true, set ivector"
+                 "randomly for initialization");
+  }
+};
+
+class IvectorExtractorStats {
+ public:
+  friend class IvectorExtractor;
+
+  IvectorExtractorStats() {};
+
+  IvectorExtractorStats(const IvectorExtractor& extractor, const IvectorExtractorStatsOptions& stats_opts);
+  
+  void AccStatsForUtterance(const IvectorExtractor &extractor, const VectorBase<double> &supervector);
+  
+  void Write(std::ostream &os, bool binary) const;
+
+  void Read(std::istream &is, bool binary, bool add = false) ;
+
+ private:
+  IvectorExtractorStatsOptions config_; /// Caution: if we read from disk, this
+  std::vector<Matrix<double> > supV_iV_;
+  SpMatrix<double> iV_iV_;
+  std::vector<SpMatrix<double> > supV_supV_;
+  double num_ivectors_;
+};
+
 
 }  // namespace ivector2
 }  // namespace kaldi

@@ -401,6 +401,8 @@
 /src/ivector2bin/gen-gmm-supervector
 /src/ivector2bin/ivector-model-init
 /src/ivector2bin/ivector2-extract
+/src/ivector2bin/ivector-model-acc-stats
+/src/ivector2bin/ivector-model-sum-stats
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk

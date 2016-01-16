@@ -50,17 +50,17 @@ int main(int argc, char *argv[]) {
       exit(1);
     }
 
-    std::string feature_rspecifier = po.GetArg(1),
+    std::string supvector_rspecifier = po.GetArg(1),
         ivector_model_wxfilename = po.GetArg(2);
 
-    SequentialBaseFloatMatrixReader feature_reader(feature_rspecifier);
-    const Matrix<BaseFloat> &sample_feat = feature_reader.Value();
-    int32 feat_dim = sample_feat.NumCols() / num_gauss;
+    SequentialDoubleVectorReader supvector_reader(supvector_rspecifier);
+    const Vector<double> &sample_feat = supvector_reader.Value();
+    int32 feat_dim = sample_feat.Dim() / num_gauss;
         
     IvectorExtractorInitStats stats(feat_dim, num_gauss);
 
-    for (; !feature_reader.Done(); feature_reader.Next()) {
-      const Matrix<BaseFloat>  &this_feat = feature_reader.Value();
+    for (; !supvector_reader.Done(); supvector_reader.Next()) {
+      const Vector<double>  &this_feat = supvector_reader.Value();
       stats.AccStats(this_feat);
     }
 

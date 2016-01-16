@@ -1,4 +1,4 @@
-// ivector2bin/ivector2-extract.cc
+// ivector2bin/ivector-model-acc-stats.cc
 
 // Copyright 2013  Daniel Povey
 //           2016  Hang Su
@@ -23,7 +23,6 @@
 #include "util/common-utils.h"
 #include "gmm/am-diag-gmm.h"
 #include "ivector2/ivector-extractor.h"
-#include <algorithm>
 
 int main(int argc, char *argv[]) {
   using namespace kaldi;
@@ -32,16 +31,19 @@ int main(int argc, char *argv[]) {
   typedef kaldi::int64 int64;
   try {
     const char *usage =
-        "Extract iVectors for utterances, using a trained iVector extractor,\n"
-        "and supvectors and Gaussian-level posteriors\n"
-        "Usage:  ivector-extract [options] <model-in> <supvector-rspecifier>"
-        "<posteriors-rspecifier> <ivector-wspecifier>\n"
+        "Accumulate stats for iVector extractor training\n"
+        "Reads in supvectors and Gaussian-level posteriors (typically from a full GMM)\n"
+        "Supports multiple threads, but won't be able to make use of too many at a time\n"
+        "(e.g. more than about 4)\n"
+        "Usage:  ivector-model-acc-stats [options] <model-in> <supvector-rspecifier> <stats-out>\n"
         "e.g.: \n"
-        "  ivector-extract final.ie '$supervectors' ark,t:ivectors.1.ark\n";
+        "  ivector-extractor-acc-stats 2.ie '$supervector' 2.1.acc\n";
 
     ParseOptions po(usage);
-    bool compute_objf = false;
-    po.Register("compute-objf", &compute_objf, "If true, compute the objective function");
+    bool binary = true;
+    IvectorExtractorStatsOptions stats_opts;
+    po.Register("binary", &binary, "Write output in binary mode");
+    stats_opts.Register(&po);
 
     po.Read(argc, argv);
     
@@ -52,39 +54,36 @@ int main(int argc, char *argv[]) {
 
     std::string ivector_extractor_rxfilename = po.GetArg(1),
         supvector_rspecifier = po.GetArg(2),
-        ivectors_wspecifier = po.GetArg(3);
+        accs_wxfilename = po.GetArg(3);
+
+
+    // Initialize these Reader objects before reading the IvectorExtractor,
+    // because it uses up a lot of memory and any fork() after that will
+    // be in danger of causing an allocation failure.
+    SequentialDoubleVectorReader supvector_reader(supvector_rspecifier);
 
     IvectorExtractor extractor;
-    {
-      bool binary_in;
-      Input ki(ivector_extractor_rxfilename, &binary_in);
-      extractor.Read(ki.Stream(), binary_in);
-    }
-
-    double tot_auxf = 0.0;
+    ReadKaldiObject(ivector_extractor_rxfilename, &extractor);
+    
+    IvectorExtractorStats stats(extractor, stats_opts);
+    
     int32 num_done = 0;
     
-    SequentialDoubleVectorReader supvector_reader(supvector_rspecifier);
-    DoubleVectorWriter ivector_writer(ivectors_wspecifier);
-
-    Vector<double> ivector;
     for (; !supvector_reader.Done(); supvector_reader.Next()) {
       std::string key = supvector_reader.Key();
-      const Vector<double> &supervector = supvector_reader.Value();
-
-      ivector.Resize(extractor.IvectorDim());
-      extractor.GetIvectorDistribution(supervector, &ivector);
-      ivector_writer.Write(key, ivector);
-
+      const Vector<double> &mat = supvector_reader.Value();
+      stats.AccStatsForUtterance(extractor, mat);
       num_done++;
     }
-
+    
     KALDI_LOG << "Done " << num_done << " files.";
-
-    if (compute_objf)
-      KALDI_LOG << "Overall average objective-function estimating "
-                << "ivector was " << (tot_auxf / num_done) << " per vector "
-                << " over " << num_done << " vectors.";
+    
+    {
+      Output ko(accs_wxfilename, binary);
+      stats.Write(ko.Stream(), binary);
+    }
+    
+    KALDI_LOG << "Wrote stats to " << accs_wxfilename;
 
     return (num_done != 0 ? 0 : 1);
   } catch(const std::exception &e) {
