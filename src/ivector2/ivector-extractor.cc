@@ -144,7 +144,7 @@ void IvectorExtractorStats::Read(std::istream &is, bool binary, bool add) {
 
 }
 
-void IvectorExtractorStats::Update(IvectorExtractor &extractor) {
+void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExtractorEstimationOptions &update_opts) {
   SpMatrix<double> iV2;
   iV2.Resize(extractor.IvectorDim());
   iV2.AddSp(num_ivectors_, extractor.Var_);
@@ -155,11 +155,16 @@ void IvectorExtractorStats::Update(IvectorExtractor &extractor) {
   tmp_Psi.Resize(extractor.FeatDim(), extractor.FeatDim());
   for (int32 i = 0; i < extractor.NumGauss(); i++) {
     extractor.A_[i].AddMatSp(1.0, supV_iV_[i], kNoTrans, iV2_inv, 0.0);
-    tmp_Psi.AddMatMat(-1.0, extractor.A_[i], kNoTrans, supV_iV_[i], kTrans, 0.0);
-    extractor.Psi_inv_[i].CopyFromMat(tmp_Psi);
-    extractor.Psi_inv_[i].AddSp(1.0, supV_supV_[i]);
-    extractor.Psi_inv_[i].Scale(1.0 / num_ivectors_);
-    extractor.Psi_inv_[i].Invert();
+    if (update_opts.update_variance == true) {
+      tmp_Psi.AddMatMat(-1.0, extractor.A_[i], kNoTrans, supV_iV_[i], kTrans, 0.0);
+      extractor.Psi_inv_[i].CopyFromMat(tmp_Psi);
+      extractor.Psi_inv_[i].AddSp(1.0, supV_supV_[i]);
+      extractor.Psi_inv_[i].Scale(1.0 / num_ivectors_);
+      if (extractor.opts_.diagonal_variance) {
+        extractor.Psi_inv_[i].SetDiag();
+      }
+      extractor.Psi_inv_[i].Invert();
+    }
   }
   extractor.ComputeDerivedValues();
 }
@@ -181,7 +186,8 @@ double IvectorExtractorStats::GetAuxfValue(const IvectorExtractor &extractor) co
   return auxf;
 }
 
-IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, int32 feat_dim, int32 num_gauss) {
+IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, int32 feat_dim, int32 num_gauss):
+                                   opts_(opts) {
   mu_.Resize(num_gauss * feat_dim);
   A_.resize(num_gauss);
   Psi_inv_.resize(num_gauss);
@@ -191,7 +197,8 @@ IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, int32 fe
   }
 }
 
-IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, const IvectorExtractorInitStats &stats) {
+IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, const IvectorExtractorInitStats &stats):
+                                   opts_(opts) {
   int32 num_gauss = stats.scatter.size();
   int32 feat_dim = stats.sum_acc.Dim() / num_gauss;
 
@@ -202,10 +209,14 @@ IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, const Iv
   Psi_inv_.resize(num_gauss);
   for (int32 i = 0; i < num_gauss; i++) {
     A_[i].Resize(feat_dim, opts.ivector_dim);
+    A_[i].SetRandn();
     Psi_inv_[i].Resize(feat_dim);
     Psi_inv_[i].AddSp(1.0 / stats.num_samples, stats.scatter[i]);
     SubVector<double> gaussVec(mu_, i * feat_dim, feat_dim);
     Psi_inv_[i].AddVec2(-1.0, gaussVec);
+    if (opts_.diagonal_variance == true) {
+      Psi_inv_[i].SetDiag();
+    }
     Psi_inv_[i].Invert();
   }
 }

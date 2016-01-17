@@ -89,6 +89,8 @@ template<typename Real> class PackedMatrix {
   void ScaleDiag(const Real alpha);  // Scales diagonal by alpha.
 
   void SetDiag(const Real alpha);  // Sets diagonal to this value.
+  
+  void SetDiag();  // Sets to diagonal matrix.
 
   template<typename OtherReal>
   void CopyFromPacked(const PackedMatrix<OtherReal> &orig);

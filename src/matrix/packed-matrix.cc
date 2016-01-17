@@ -146,6 +146,16 @@ void PackedMatrix<Real>::SetDiag(Real alpha) {
   }
 }
 
+template<typename Real>
+void PackedMatrix<Real>::SetDiag() {
+  Real *data = data_;
+  for (size_t i = 1; i < num_rows_; i++) {
+    for (size_t j = 0; j < i; j++) {
+      data[i*(i+1)/2 + j] = 0;  
+    }
+  }
+
+}
 
 
 template<typename Real>

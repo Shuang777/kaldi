@@ -46,9 +46,11 @@ class IvectorExtractorUtteranceStats {
 
 struct IvectorExtractorOptions {
   int ivector_dim;
-  IvectorExtractorOptions(): ivector_dim(400) { }
+  bool diagonal_variance;
+  IvectorExtractorOptions(): ivector_dim(400), diagonal_variance(true) { }
   void Register(OptionsItf *po) {
     po->Register("ivector-dim", &ivector_dim, "Dimension of iVector");
+    po->Register("diagonal-variance", &diagonal_variance, "Restrict variance to be diagonal");
   }
 };
 
@@ -97,6 +99,8 @@ class IvectorExtractor {
   void ComputeDerivedValues();
 
 private:
+  IvectorExtractorOptions opts_;
+
   Vector<double> mu_;
   std::vector<Matrix<double> > A_;
   std::vector<SpMatrix<double> > Psi_inv_;
@@ -117,10 +121,10 @@ struct IvectorExtractorStatsOptions {
 };
 
 struct IvectorExtractorEstimationOptions {
-  bool update;
-  IvectorExtractorEstimationOptions(): update(true) { }
+  bool update_variance;
+  IvectorExtractorEstimationOptions(): update_variance(true) { }
   void Register(OptionsItf *po) {
-    po->Register("update", &update, "Update model parameters");
+    po->Register("update-variance", &update_variance, "Update variance of noise term");
   }
 };
 
@@ -138,7 +142,7 @@ class IvectorExtractorStats {
 
   void Read(std::istream &is, bool binary, bool add = false) ;
 
-  void Update(IvectorExtractor &extractor);
+  void Update(IvectorExtractor &extractor, const IvectorExtractorEstimationOptions &update_opts);
 
   double GetAuxfValue(const IvectorExtractor &extractor) const;
 

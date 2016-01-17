@@ -39,6 +39,8 @@ int main(int argc, char *argv[]) {
     po.Register("binary", &binary, "Write output in binary mode");
     bool check_change = false;
     po.Register("check-change", &check_change, "Check auxf value before model update");
+    bool update_model = true;
+    po.Register("update-model", &update_model, "Update the model by performing M-step");
     
     update_opts.Register(&po);
     
@@ -67,8 +69,8 @@ int main(int argc, char *argv[]) {
       KALDI_LOG << "Aux-function value before update is " << auxf_old;
     }
 
-    if (update_opts.update == true) {
-      stats.Update(extractor);
+    if (update_model == true) {
+      stats.Update(extractor, update_opts);
       WriteKaldiObject(extractor, model_wxfilename, binary);
       KALDI_LOG << "Updated model and wrote it to "
                 << model_wxfilename;
