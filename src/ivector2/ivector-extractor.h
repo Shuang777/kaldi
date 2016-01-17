@@ -73,6 +73,7 @@ class IvectorExtractorInitStats {
 class IvectorExtractor {
  public:
   friend class IvectorExtractorInitStats;
+  friend class IvectorExtractorStats;
 
   IvectorExtractor() {}
 
@@ -115,6 +116,14 @@ struct IvectorExtractorStatsOptions {
   }
 };
 
+struct IvectorExtractorEstimationOptions {
+  bool update;
+  IvectorExtractorEstimationOptions(): update(true) { }
+  void Register(OptionsItf *po) {
+    po->Register("update", &update, "Update model parameters");
+  }
+};
+
 class IvectorExtractorStats {
  public:
   friend class IvectorExtractor;
@@ -128,6 +137,10 @@ class IvectorExtractorStats {
   void Write(std::ostream &os, bool binary) const;
 
   void Read(std::istream &is, bool binary, bool add = false) ;
+
+  void Update(IvectorExtractor &extractor);
+
+  double GetAuxfValue(const IvectorExtractor &extractor) const;
 
  private:
   IvectorExtractorStatsOptions config_; /// Caution: if we read from disk, this

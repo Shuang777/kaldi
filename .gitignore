@@ -403,6 +403,7 @@
 /src/ivector2bin/ivector2-extract
 /src/ivector2bin/ivector-model-acc-stats
 /src/ivector2bin/ivector-model-sum-stats
+/src/ivector2bin/ivector-model-est
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk
