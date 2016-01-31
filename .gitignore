@@ -138,7 +138,9 @@
 /src/bin/vector-sum
 /src/bin/matrix-div-cols-sum
 /src/bin/matrix-entropy-rows
-
+/src/bin/concatenate-posts
+/src/bin/select-posts
+/src/bin/filter-posts
 
 # /src/cudamatrix/
 /src/cudamatrix/.depend.mk
@@ -404,6 +406,7 @@
 /src/ivector2bin/ivector-model-acc-stats
 /src/ivector2bin/ivector-model-sum-stats
 /src/ivector2bin/ivector-model-est
+/src/ivector2bin/ivector-model-info
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk

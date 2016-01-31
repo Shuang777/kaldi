@@ -270,6 +270,10 @@ class VectorBase {
   template<typename OtherReal>
   void CopyRowFromSp(const SpMatrix<OtherReal> &S, MatrixIndexT row);
   
+  /// Extracts diagonal elements of the symmetric matrix S.
+  template<typename OtherReal>
+  void CopyDiagFromSp(const SpMatrix<OtherReal> &S, MatrixIndexT row);
+  
   /// Extracts a column of the matrix M.
   template<typename OtherReal>
   void CopyColFromMat(const MatrixBase<OtherReal> &M , MatrixIndexT col);

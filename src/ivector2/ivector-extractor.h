@@ -89,6 +89,8 @@ class IvectorExtractor {
 
   int32 NumGauss() const {  return A_.size(); }
 
+  int32 SupervectorDim() const { return mu_.Dim(); }
+
   void Write(std::ostream &os, bool binary, const bool write_derived = false) const;
 
   void Read(std::istream &is, bool binary, const bool read_derived = false) ;
@@ -97,6 +99,10 @@ class IvectorExtractor {
                               VectorBase<double> *normalized_supvervector = NULL, double *auxf = NULL) const;
 
   void ComputeDerivedValues();
+
+  std::string Info();
+
+  int32 NumParams();
 
 private:
   IvectorExtractorOptions opts_;
@@ -122,9 +128,13 @@ struct IvectorExtractorStatsOptions {
 
 struct IvectorExtractorEstimationOptions {
   bool update_variance;
-  IvectorExtractorEstimationOptions(): update_variance(true) { }
+  double variance_floor_factor;
+  bool floor_iv2;
+  IvectorExtractorEstimationOptions(): update_variance(true), variance_floor_factor(0), floor_iv2(false) { }
   void Register(OptionsItf *po) {
     po->Register("update-variance", &update_variance, "Update variance of noise term");
+    po->Register("variance-floor-factor", &variance_floor_factor, "Factor that determines variance flooring (we floor each covar to this times global average covariance");
+    po->Register("floor-iv2", &floor_iv2, "Floor the matrix for transformation estimation");
   }
 };
 

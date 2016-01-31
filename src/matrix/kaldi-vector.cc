@@ -435,6 +435,28 @@ void VectorBase<float>::CopyRowFromSp(const SpMatrix<float> &mat, MatrixIndexT r
 template
 void VectorBase<double>::CopyRowFromSp(const SpMatrix<double> &mat, MatrixIndexT row);
 
+template<typename Real>
+template<typename OtherReal>
+void VectorBase<Real>::CopyDiagFromSp(const SpMatrix<OtherReal> &sp, MatrixIndexT row) {
+  KALDI_ASSERT(row < sp.NumRows());
+  KALDI_ASSERT(dim_ == sp.NumCols());
+  
+  const OtherReal *sp_data = sp.Data();
+
+  for (MatrixIndexT i = 0; i < row; i++) {
+    data_[i] = static_cast<Real>(*(sp_data));
+    sp_data += i+2;
+  }
+}
+
+template
+void VectorBase<float>::CopyDiagFromSp(const SpMatrix<double> &mat, MatrixIndexT row);
+template
+void VectorBase<double>::CopyDiagFromSp(const SpMatrix<float> &mat, MatrixIndexT row);
+template
+void VectorBase<float>::CopyDiagFromSp(const SpMatrix<float> &mat, MatrixIndexT row);
+template
+void VectorBase<double>::CopyDiagFromSp(const SpMatrix<double> &mat, MatrixIndexT row);
 
 #ifdef HAVE_MKL
 template<>

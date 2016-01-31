@@ -16,10 +16,13 @@
 // limitations under the License.
 
 #include "ivector2/ivector-extractor.h"
+#include "nnet/nnet-various.h"
 
 namespace kaldi {
 
 namespace ivector2{
+
+using namespace kaldi::nnet1;
 
 void IvectorExtractorUtteranceStats::Reset(int32 num_gauss, int32 feat_dim) {
   gamma_.Resize(num_gauss, kSetZero);
@@ -149,23 +152,60 @@ void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExt
   iV2.Resize(extractor.IvectorDim());
   iV2.AddSp(num_ivectors_, extractor.Var_);
   iV2.AddSp(1.0, iV_iV_);
-  SpMatrix<double> iV2_inv(iV2);
-  iV2_inv.Invert();
-  Matrix<double> tmp_Psi;
-  tmp_Psi.Resize(extractor.FeatDim(), extractor.FeatDim());
-  for (int32 i = 0; i < extractor.NumGauss(); i++) {
-    extractor.A_[i].AddMatSp(1.0, supV_iV_[i], kNoTrans, iV2_inv, 0.0);
-    if (update_opts.update_variance == true) {
+
+  if (!update_opts.floor_iv2) {
+    // straight forward way of solving for A
+    SpMatrix<double> iV2_inv(iV2);
+    iV2_inv.Invert();
+    // Update transform matrix
+    for (int32 i = 0; i < extractor.NumGauss(); i++) {
+      extractor.A_[i].AddMatSp(1.0, supV_iV_[i], kNoTrans, iV2_inv, 0.0);
+    }
+  } else {
+    SolverOptions solver_opts;
+    solver_opts.name = "M";
+    solver_opts.diagonal_precondition = true;
+    for (int32 i = 0; i < extractor.NumGauss(); i++) {
+      SolveQuadraticMatrixProblem(iV2, supV_iV_[i], extractor.Psi_inv_[i], solver_opts, &extractor.A_[i]);
+    }
+  }
+
+  // Update variance
+  if (update_opts.update_variance) {
+    Matrix<double> tmp_Psi(extractor.FeatDim(), extractor.FeatDim());
+
+    SpMatrix<double> tot_Psi(extractor.FeatDim());
+
+    bool floor_psi = (update_opts.variance_floor_factor != 0) ;
+
+    for (int32 i = 0; i < extractor.NumGauss(); i++) {
       tmp_Psi.AddMatMat(-1.0, extractor.A_[i], kNoTrans, supV_iV_[i], kTrans, 0.0);
       extractor.Psi_inv_[i].CopyFromMat(tmp_Psi);
       extractor.Psi_inv_[i].AddSp(1.0, supV_supV_[i]);
       extractor.Psi_inv_[i].Scale(1.0 / num_ivectors_);
+      if (floor_psi) {
+        tot_Psi.AddSp(1.0, extractor.Psi_inv_[i]);
+      }
+    }
+    tot_Psi.Scale(update_opts.variance_floor_factor / extractor.NumGauss());
+    int32 tot_num_floored = 0;
+    for (int32 i = 0; i < extractor.NumGauss(); i++) {
+      if (floor_psi) {
+        int32 num_floored = extractor.Psi_inv_[i].ApplyFloor(tot_Psi);
+        tot_num_floored += num_floored;
+        if (num_floored > 0)
+          KALDI_LOG << "For Gaussian index " << i << ", floored "
+                    << num_floored << " eigenvalues of variance.";
+      }
       if (extractor.opts_.diagonal_variance) {
         extractor.Psi_inv_[i].SetDiag();
       }
       extractor.Psi_inv_[i].Invert();
     }
+    double floored_percent = tot_num_floored * 100.0 / (extractor.NumGauss() * extractor.FeatDim());
+    KALDI_LOG << "Floored " << floored_percent << "% of all Gaussian eigenvalues";
   }
+
   extractor.ComputeDerivedValues();
 }
 
@@ -283,6 +323,40 @@ void IvectorExtractor::Read(std::istream &is, bool binary, const bool read_deriv
   ExpectToken(is, binary, "</IvectorExtractor2>");
 
   ComputeDerivedValues();
+}
+
+int32 IvectorExtractor::NumParams() {
+  int32 num_params = SupervectorDim() + NumGauss() * FeatDim() * IvectorDim();
+  if (opts_.diagonal_variance) {
+    num_params += SupervectorDim();
+  } else {    // block diagonal
+    num_params += NumGauss() * FeatDim() * FeatDim();
+  }
+  return num_params;
+}
+
+std::string IvectorExtractor::Info() {
+  std::ostringstream ostr;
+  ostr << "num-gauss " << NumGauss() << std::endl;
+  ostr << "feat-dim " << FeatDim() << std::endl;
+  ostr << "supervec-dim " << SupervectorDim() << std::endl;
+  ostr << "ivector-dim " << IvectorDim() << std::endl;
+  ostr << "number-of-parameters " << static_cast<float>(NumParams())/1e6
+       << " millions" << std::endl;
+  // topology & weight stats
+  Matrix<double> A_mat(SupervectorDim(), IvectorDim());
+  Vector<double> Psi_vec(SupervectorDim());
+  for (int32 i = 0; i < NumGauss(); i++) {
+    SubMatrix<double> A_mat_sub(A_mat, i * FeatDim(), FeatDim(), 0, IvectorDim());
+    A_mat_sub.CopyFromMat(A_[i]);
+    SubVector<double> Psi_vec_sub(Psi_vec, i * FeatDim(), FeatDim());
+    Psi_vec_sub.CopyDiagFromSp(Psi_inv_[i]);
+  }
+  ostr << "Ivector Loading Matrix \n  " << MomentStatistics(A_mat) << std::endl;
+  Psi_vec.InvertElements();
+  ostr << "Diagonal of Psi \n  " << MomentStatistics(Psi_vec) << std::endl;
+
+  return ostr.str();
 }
 
 } // namespace ivector2
