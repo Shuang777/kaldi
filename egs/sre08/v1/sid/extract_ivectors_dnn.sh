@@ -27,6 +27,7 @@ add_delta=true
 cmvn=true
 cmvn_opts="--norm-vars=false"
 vad=true
+post_from=
 dnnfeats2feats=none
 
 # End configuration section.
@@ -132,15 +133,23 @@ if [ $dnnfeats2feats == fmllr ]; then
 fi
 
 if [ $stage -le 0 ]; then
-  echo "$0: extracting iVectors"
-  $post_cmd JOB=1:$nj $dir/log/extract_ivectors.JOB.log \
-    nnet-forward --frames-per-batch=4096 --feature-transform=$feature_transform \
-      --use-gpu=$use_gpu $nnet "$nnet_feats" ark:- \
-    \| select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- \
-    \| prob-to-post --min-post=$min_post ark:- ark:- \| \
-    scale-post ark:- $posterior_scale ark:- \| \
-    ivector-extract --verbose=2 $srcdir/final.ie "$feats" ark,s,cs:- \
-      ark,scp,t:$dir/ivector.JOB.ark,$dir/ivector.JOB.scp || exit 1;
+  if [ -z $post_from ]; then
+    echo "$0: extracting iVectors"
+    $post_cmd JOB=1:$nj $dir/log/extract_ivectors.JOB.log \
+      nnet-forward --frames-per-batch=4096 --feature-transform=$feature_transform \
+        --use-gpu=$use_gpu $nnet "$nnet_feats" ark:- \
+      \| select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- \
+      \| prob-to-post --min-post=$min_post ark:- ark:- \| \
+      scale-post ark:- $posterior_scale ark:- \| \
+      ivector-extract --verbose=2 $srcdir/final.ie "$feats" ark,s,cs:- \
+        ark,scp,t:$dir/ivector.JOB.ark,$dir/ivector.JOB.scp
+  else
+    [ -f $dir/post.1.gz ] && rm $dir/post.*.gz
+    (cd  $dir; for i in $(ls ../../$post_from/post.*.gz); do ln -s $i; done)
+    $post_cmd JOB=1:$nj $dir/log/extract_ivectors.JOB.log \
+      ivector-extract --verbose=2 $srcdir/final.ie "$feats" "ark:gunzip -c $dir/post.JOB.gz |" \
+        ark,scp,t:$dir/ivector.JOB.ark,$dir/ivector.JOB.scp
+  fi
 fi
 
 if [ $stage -le 1 ]; then

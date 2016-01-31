@@ -144,7 +144,7 @@ if [ -z $post_from ]; then
   fi
 else
   [ -f $dir/post.1.gz ] && rm $dir/post.*.gz
-  (cd  $dir; for i in $(ls ../$(basename $post_from)/post.*.gz); do ln -s $i; done)
+  (cd  $dir; for i in $(ls ../../$post_from/post.*.gz); do ln -s $i; done)
 fi
 
 if [ $stage -le 1 ]; then
