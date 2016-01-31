@@ -7,7 +7,7 @@ BINFILES = fgmm-global-acc-stats fgmm-global-sum-accs fgmm-global-est \
            fgmm-global-merge fgmm-global-to-gmm fgmm-gselect fgmm-global-get-frame-likes \
            fgmm-global-acc-stats-twofeats fgmm-global-copy fgmm-global-mixdown \
            fgmm-global-gselect-to-post fgmm-global-info fgmm-gselect-post \
-					 fgmm-global-dtw
+					 fgmm-global-dtw fgmm-global-acc-stats-print
 
 
 OBJFILES =

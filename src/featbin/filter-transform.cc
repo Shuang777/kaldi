@@ -1,4 +1,4 @@
-// featbin/transform-feats.cc
+// featbin/filter-transform.cc
 
 // Copyright 2009-2012  Microsoft Corporation
 //                      Johns Hopkins University (author: Daniel Povey)
