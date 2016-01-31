@@ -219,6 +219,7 @@
 /src/fgmmbin/fgmm-global-info
 /src/fgmmbin/fgmm-gselect-post
 /src/fgmmbin/fgmm-global-dtw
+/src/fgmmbin/fgmm-global-acc-stats-print
 
 # /src/fstbin/
 /src/fstbin/.depend.mk
