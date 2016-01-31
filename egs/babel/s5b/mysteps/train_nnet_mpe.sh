@@ -1,6 +1,5 @@
 #!/bin/bash
-# Copyright 2013  Brno University of Technology (Author: Karel Vesely)  
-# Copyright 2014  International Computer Science Institute (Author: Hang Su)
+# Copyright 2013-2014  Brno University of Technology (Author: Karel Vesely)  
 # Apache 2.0.
 
 # Sequence-discriminative MPE/sMBR training of DNN.
@@ -11,10 +10,6 @@
 # this actually follows from the way lattices are defined in Kaldi, which
 # is to have a single path for each word (output-symbol) sequence.
 
-{
-
-set -e
-set -o pipefail
 
 # Begin configuration section.
 cmd=run.pl
@@ -24,11 +19,19 @@ lmwt=1.0
 learn_rate=0.00001
 halving_factor=1.0 #ie. disable halving
 do_smbr=true
-use_silphones=false #setting this to something will enable giving siphones to nnet-mpe
+exclude_silphones=false # exclude silphones from approximate accuracy computation
+unkphonelist= # exclude unkphones from approximate accuracy computation (overrides exclude_silphones)
 verbose=1
-transform_dir=
-scp_splits=
+
 seed=777    # seed value used for training data shuffling
+skip_cuda_check=false
+feat_type=traps
+cmvn_opts="--norm-vars=false"
+delta_opts=
+splice_opts=
+resave=true
+cleanup=true
+transdir=
 # End configuration section
 
 echo "$0 $@"  # Print the command line for logging
@@ -47,7 +50,6 @@ if [ $# -ne 6 ]; then
   echo "  --lmwt <float>                                   # linguistic score scaling"
   echo "  --learn-rate <float>                             # learning rate for NN training"
   echo "  --do-smbr <bool>                                 # do sMBR training, otherwise MPE"
-  echo "  --transform-dir <transform-dir>                  # directory to find fMLLR transforms."
   
   exit 1;
 fi
@@ -58,18 +60,23 @@ srcdir=$3
 alidir=$4
 denlatdir=$5
 dir=$6
-mkdir -p $dir/log
+
+[ -z "$transdir" ] && transdir=$alidir
 
 for f in $data/feats.scp $alidir/{tree,final.mdl,ali.1.gz} $denlatdir/lat.scp $srcdir/{final.nnet,final.feature_transform}; do
   [ ! -f $f ] && echo "$0: no such file $f" && exit 1;
 done
+
+# check if CUDA is compiled in,
+if ! $skip_cuda_check; then
+  cuda-compiled || { echo 'CUDA was not compiled in, skipping! Check src/kaldi.mk and src/configure' && exit 1; }
+fi
 
 mkdir -p $dir/log
 
 cp $alidir/{final.mdl,tree} $dir
 
 silphonelist=`cat $lang/phones/silence.csl` || exit 1;
-
 
 #Get the files we will need
 nnet=$srcdir/$(readlink $srcdir/final.nnet || echo final.nnet);
@@ -92,60 +99,56 @@ model=$dir/final.mdl
 
 #enable/disable silphones from MPE training
 mpe_silphones_arg= #empty
-[ "$use_silphones" == "true" ] && mpe_silphones_arg="--silence-phones=$silphonelist"
+$exclude_silphones && mpe_silphones_arg="--silence-phones=$silphonelist" # all silphones
+[ ! -z $unkphonelist ] && mpe_silphones_arg="--silence-phones=$unkphonelist" # unk only
 
-###### PREPARE FEATURES ######
 
-# shuffle the list
-echo "Preparing train/cv lists"
-cat $data/feats.scp | utils/shuffle_list.pl --srand ${seed:-777} > $dir/shuffle.scp
-echo
-echo "# PREPARING FEATURES"
-#read the features
-if [ -z $feat_type ]; then
-  if [ -f $alidir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
-fi
+# Shuffle the feature list to make the GD stochastic!
+# By shuffling features, we have to use lattices with random access (indexed by .scp file).
+echo "Shuffling scp"
+cat $data/feats.scp | utils/shuffle_list.pl --srand $seed > $dir/shuffle.train.scp
+
+###
+### PREPARE FEATURE EXTRACTION PIPELINE
+###
 echo "$0: feature type is $feat_type"
-
 case $feat_type in
-  delta) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- | add-deltas ark:- ark:- |"
+  raw) feats="scp:$dir/shuffle.train.scp"
    ;;
-  raw) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- |"
+  cmvn|traps) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- |"
    ;;
-  lda) feats="ark,s,cs:apply-cmvn --norm-vars=false --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
-    cp $alidir/final.mat $dir    
-    ;;
+  delta) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- | add-deltas $delta_opts ark:- ark:- |"
+   ;;
+  lda|fmllr) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$data/utt2spk scp:$data/cmvn.scp scp:$dir/shuffle.train.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $dir/final.mat ark:- ark:- |"
+    cp $transdir/final.mat $dir
+   ;;
   *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
-
-if [ ! -z $transform_dir ]; then
-  if [ -f $transform_dir/trans.1 ] && [ $feat_type != "raw" ]; then
-    echo "$0: using transforms from $transform_dir"
-    feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transform_dir/trans.*|' ark:- ark:- |"
-  fi
-  if [ -f $transform_dir/raw_trans.1 ] && [ $feat_type == "raw" ]; then
-    echo "$0: using raw-fMLLR transforms from $transform_dir"
-    feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transform_dir/raw_trans.*|' ark:- ark:- |"
-  fi
+if [ -f $transdir/trans.1 ] && [ $feat_type == "fmllr" ]; then
+  echo "$0: using transforms from $transdir"
+  feats="$feats transform-feats --utt2spk=ark:$data/utt2spk 'ark:cat $transdir/trans.*|' ark:- ark:- |"
 fi
 
-#re-save the shuffled features, so they are stored sequentially on the disk in /tmp/
-echo "Resaving the features for rbm training"
-tmpdir=$dir/feature_shuffled; mkdir -p $tmpdir; 
-copy-feats "$feats" ark,scp:$tmpdir/feats.ark,$dir/train.scp
-#remove data on exit...
-trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
+[ -z "$splice_opts" ] && splice_opts=`cat $transdir/splice_opts 2>/dev/null`
 
-if [ ! -z $scp_splits ]; then
-  split_scps=""
-  for ((n=1; n<=scp_splits; n++)); do
-    split_scps="$split_scps $dir/train.scp.$n"
-  done
-  utils/split_scp.pl $dir/train.scp $split_scps
+#get feature dim
+# re-save the shuffled features, so they are stored sequentially on the disk in /tmp/
+if [ $resave == true ]; then
+  tmpdir=$dir/feature_shuffled; mkdir -p $tmpdir; 
+  copy-feats "$feats" ark,scp:$tmpdir/feats.ark,$dir/train.scp
+  # remove data on exit...
+  [ "$clean_up" == true ] && trap "echo \"Removing features tmpdir $tmpdir @ $(hostname)\"; rm -r $tmpdir" EXIT
+else
+  [ -f $dir/train.scp ] && rm -f $dir/train.scp
+  (cd $dir; ln -s shuffle.train.scp train.scp;)
 fi
 
-feats="ark,s,cs:copy-feats scp:$dir/train.scp ark:- |"
-echo "Substitute feats with $feats"
+# Create the feature stream,
+feats="scp:$dir/train.scp"
+
+# Record the setup,
+[ ! -z "$cmvn_opts" ] && echo $cmvn_opts >$dir/cmvn_opts
+[ ! -z "$delta_opts" ] && echo $delta_opts >$dir/delta_opts
 
 ###
 ### Prepare the alignments
@@ -160,7 +163,6 @@ ali="ark:gunzip -c $alidir/ali.*.gz |"
 # The lattices are indexed by SCP (they are not gziped because of the random access in SGD)
 lats="scp:$denlatdir/lat.scp"
 
-
 # Run several iterations of the MPE/sMBR training
 cur_mdl=$nnet
 x=1
@@ -169,7 +171,6 @@ while [ $x -le $num_iters ]; do
   if [ -f $dir/$x.nnet ]; then
     echo "Skipped, file $dir/$x.nnet exists"
   else
-    if [ -z $scp_splits ]; then
     #train
     $cmd $dir/log/mpe.$x.log \
      nnet-train-mpe-sequential \
@@ -182,36 +183,6 @@ while [ $x -le $num_iters ]; do
        --verbose=$verbose \
        $mpe_silphones_arg \
        $cur_mdl $alidir/final.mdl "$feats" "$lats" "$ali" $dir/$x.nnet || exit 1
-    else
-      y=1
-      while [ $y -le $scp_splits ]; do
-        echo "Sub pass $y (learnrate $learn_rate)"
-        if [ -f $dir/$x.$y.nnet ]; then
-          echo "Skipped, file $dir/$x.$y.nnet exists"
-        else
-          yfeats=$(echo $feats | sed "s#train.scp#train.scp.$y#")
-
-          $cmd $dir/log/mpe.$x.$y.log \
-           nnet-train-mpe-sequential \
-             --feature-transform=$feature_transform \
-             --class-frame-counts=$class_frame_counts \
-             --acoustic-scale=$acwt \
-             --lm-scale=$lmwt \
-             --learn-rate=$learn_rate \
-             --do-smbr=$do_smbr \
-             --verbose=$verbose \
-             $mpe_silphones_arg \
-             $cur_mdl $alidir/final.mdl "$yfeats" "$lats" "$ali" $dir/$x.$y.nnet || exit 1
-        fi
-        cur_mdl=$dir/$x.$y.nnet
-
-        #report the progress
-        grep -B 2 "Overall average frame-accuracy" $dir/log/mpe.$x.$y.log | sed -e 's|.*)||'
-
-        y=$((y+1))
-      done
-      (cd $dir; ln -s $cur_mdl $x.nnet)
-    fi
   fi
   cur_mdl=$dir/$x.nnet
 
@@ -230,4 +201,3 @@ echo "MPE/sMBR training finished"
 
 
 exit 0
-}

@@ -30,8 +30,8 @@ lm=tg
 traindata=data/train20
 decodename=eval2000_frm20
 stage=0 # resume training with --stage=N
-feat_type=traps
-nj=20
+feat_type=fmllr
+nj=30
 # End of config.
 . utils/parse_options.sh
 #
@@ -84,7 +84,6 @@ if [ $stage -le 2 ]; then
     ;;
   esac
 fi
-exit
 
 ## bottleneck approach
 if [ $stage -le 3 ]; then
@@ -119,33 +118,37 @@ if [ $stage -le 4 ]; then
 fi
 
 
-exit 
 # Sequence training using sMBR criterion, we do Stochastic-GD 
 # with per-utterance updates. We use usually good acwt 0.1
 # Lattices are re-generated after 1st epoch, to get faster convergence.
-dir=exp/dnn5b_pretrain-dbn_dnn_smbr
-srcdir=exp/dnn5b_pretrain-dbn_dnn
+srcdir=$dir
+dir=${srcdir}_smbr
 acwt=0.0909
 
-if [ $stage -le 3 ]; then
+if [ $stage -le 5 ]; then
   # First we generate lattices and alignments:
-  mysteps/align_nnet.sh --nj 100 --cmd "$train_cmd" \
-    --transform-dir exp/tri4b_ali_nodup \
+  mysteps/align_nnet.sh --nj 100 --cmd "$train_cmd -tc 50" \
+    --transform-dir ${gmmdir}_ali_nodup \
+    --feat-type $feat_type \
     ${traindata}_nodup data/lang $srcdir ${srcdir}_ali || exit 1;
-#  mysteps/make_denlats_nnet.sh --nj 10 --sub-split 100 --cmd "$decode_cmd" --config conf/decode_dnn.config \
-#    --acwt $acwt ${traindata}_nodup data/lang $srcdir ${srcdir}_denlats || exit 1;
+  mysteps/make_denlats_nnet.sh --nj 100 --cmd "$decode_cmd -tc 50" \
+    --transform-dir ${gmmdir}_ali_nodup \
+    --feat-type $feat_type \
+    --config conf/decode_dnn.config \
+    --acwt $acwt ${traindata}_nodup data/lang $srcdir ${srcdir}_denlats
 fi
-exit
 
-if [ $stage -le 4 ]; then
+if [ $stage -le 6 ]; then
   # Re-train the DNN by 1 iteration of sMBR 
-  mysteps/train_nnet_mpe.sh --cmd "$cuda_cmd" --num-iters 1 --acwt $acwt --do-smbr true \
-    ${traindata}_nodup data/lang $srcdir ${srcdir}_ali ${srcdir}_denlats $dir || exit 1
+#  mysteps/train_nnet_mpe.sh --cmd "$cuda_cmd" --num-iters 1 --acwt $acwt --do-smbr true \
+#    --transdir ${gmmdir}_ali_nodup  --feat-type $feat_type \
+#    ${traindata}_nodup data/lang $srcdir ${srcdir}_ali ${srcdir}_denlats $dir || exit 1
   # Decode (reuse HCLG graph)
   for ITER in 1; do
-    mysteps/decode_nnet.sh --nj 20 --cmd "$decode_cmd" --config conf/decode_dnn.config \
+    mysteps/decode_nnet.sh --nj $nj --cmd "$decode_cmd" --config conf/decode_dnn.config \
       --nnet $dir/${ITER}.nnet --acwt $acwt \
-      $gmmdir/graph_sw1_${lm} data/eval2000 $dir/decode_eval2000_sw1_${lm} || exit 1;
+      --transform-dir ${gmmdir}/decode_${decodename}_sw1_${lm} --feat-type $feat_type \
+      $gmmdir/graph_sw1_${lm} data/${decodename} $dir/decode_${decodename}_sw1_${lm}
     # Rescore using unpruned trigram sw1_fsh
 #    steps/lmrescore.sh --mode 3 --cmd "$mkgraph_cmd" data/lang_sw1_${lm} data/lang_sw1_fsh_tg data/eval2000 \
 #      $dir/decode_eval2000_sw1_${lm} $dir/decode_eval2000_sw1_fsh_tg.3 || exit 1 
@@ -153,27 +156,34 @@ if [ $stage -le 4 ]; then
 fi
 
 # Re-generate lattices, run 4 more sMBR iterations
-dir=exp/dnn5b_pretrain-dbn_dnn_smbr_i1lats
-srcdir=exp/dnn5b_pretrain-dbn_dnn_smbr
+srcdir=$dir
+dir=${srcdir}_i1lats
 acwt=0.0909
 
-if [ $stage -le 5 ]; then
+if [ $stage -le 7 ]; then
   # First we generate lattices and alignments:
-  mysteps/align_nnet.sh --nj 250 --cmd "$train_cmd" \
+  mysteps/align_nnet.sh --nj 100 --cmd "$train_cmd -tc 50" \
+    --transform-dir ${gmmdir}_ali_nodup \
+    --feat-type $feat_type \
     ${traindata}_nodup data/lang $srcdir ${srcdir}_ali || exit 1;
-  mysteps/make_denlats_nnet.sh --nj 10 --sub-split 100 --cmd "$decode_cmd" --config conf/decode_dnn.config \
-    --acwt $acwt ${traindata}_nodup data/lang $srcdir ${srcdir}_denlats || exit 1;
+  mysteps/make_denlats_nnet.sh --nj 100 --cmd "$decode_cmd -tc 50" \
+    --transform-dir ${gmmdir}_ali_nodup \
+    --feat-type $feat_type \
+    --config conf/decode_dnn.config \
+    --acwt $acwt ${traindata}_nodup data/lang $srcdir ${srcdir}_denlats
 fi
 
-if [ $stage -le 6 ]; then
+if [ $stage -le 8 ]; then
   # Re-train the DNN by 1 iteration of sMBR 
   mysteps/train_nnet_mpe.sh --cmd "$cuda_cmd" --num-iters 2 --acwt $acwt --do-smbr true \
+    --transdir ${gmmdir}_ali_nodup  --feat-type $feat_type \
     ${traindata}_nodup data/lang $srcdir ${srcdir}_ali ${srcdir}_denlats $dir || exit 1
   # Decode (reuse HCLG graph)
   for ITER in 1 2; do
-    mysteps/decode_nnet.sh --nj 20 --cmd "$decode_cmd" --config conf/decode_dnn.config \
+    mysteps/decode_nnet.sh --nj $nj --cmd "$decode_cmd" --config conf/decode_dnn.config \
       --nnet $dir/${ITER}.nnet --acwt $acwt \
-      $gmmdir/graph_sw1_${lm} data/eval2000 $dir/decode_eval2000_sw1_${lm} || exit 1;
+      --transform-dir ${gmmdir}/decode_${decodename}_sw1_${lm} --feat-type $feat_type \
+      $gmmdir/graph_sw1_${lm} data/${decodename} $dir/decode_${decodename}_sw1_${lm}
     # Rescore using unpruned trigram sw1_fsh
 #    steps/lmrescore.sh --mode 3 --cmd "$mkgraph_cmd" data/lang_sw1_${lm} data/lang_sw1_fsh_tg data/eval2000 \
 #      $dir/decode_eval2000_sw1_${lm} $dir/decode_eval2000_sw1_fsh_tg.3 || exit 1 

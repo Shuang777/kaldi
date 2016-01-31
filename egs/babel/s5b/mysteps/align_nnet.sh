@@ -1,6 +1,9 @@
 #!/bin/bash
 # Copyright 2012-2013 Brno University of Technology (Author: Karel Vesely)
 # Apache 2.0
+{
+set -e
+set -o pipefail
 
 # Aligns 'data' to sequences of transition-ids using Neural Network based acoustic model.
 # Optionally produces alignment in lattice format, this is handy to get word alignment.
@@ -12,6 +15,7 @@ stage=0
 scale_opts="--transition-scale=1.0 --acoustic-scale=0.1 --self-loop-scale=0.1"
 beam=10
 retry_beam=40
+feat_type=traps
 
 align_to_lats=false # optionally produce alignment in lattice format
  lats_decode_opts="--acoustic-scale=0.1 --beam=20 --latbeam=10"
@@ -19,6 +23,8 @@ align_to_lats=false # optionally produce alignment in lattice format
 
 use_gpu="no" # yes|no|optionaly
 transform_dir=
+cmvn_opts="--norm-vars=false"
+splice_opts=
 # End configuration options.
 
 [ $# -gt 0 ] && echo "$0 $@"  # Print the command line for logging
@@ -42,8 +48,7 @@ srcdir=$3
 dir=$4
 
 oov=`cat $lang/oov.int` || exit 1;
-splice_opts=`cat $srcdir/splice_opts 2>/dev/null` # frame-splicing options.
-norm_vars=`cat $srcdir/norm_vars 2>/dev/null` || norm_vars=false # cmn/cmvn option, default false.
+[ -f $srcdir/splice_opts ] && splice_opts=`cat $srcdir/splice_opts 2>/dev/null` # frame-splicing options.
 mkdir -p $dir/log
 echo $nj > $dir/num_jobs
 sdata=$data/split$nj
@@ -63,25 +68,32 @@ for f in $sdata/1/feats.scp $sdata/1/text $lang/L.fst $nnet $model $feature_tran
 done
 
 # PREPARE FEATURE EXTRACTION PIPELINE
-if [ -f $srcdir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
-echo "$0: feature type is $feat_type"
-
+# Create the feature stream:
 case $feat_type in
-  delta) feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | add-deltas ark:- ark:- |";;
-  lda) feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $srcdir/final.mat ark:- ark:- |"
-  cp $srcdir/final.mat $dir    
-   ;;
-  *) echo "Invalid feature type $feat_type" && exit 1;
+  raw) feats="scp:$sdata/JOB/feats.scp ark:- |";;
+  smvn|traps) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- |";;
+  delta) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | add-deltas ark:- ark:- |";;
+  lda|fmllr) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $srcdir/final.mat ark:- ark:- |" 
+  cp $srcdir/final.mat $dir/final.mat
+  ;;
+  *) echo "$0: invalid feature type $feat_type" && exit 1;
 esac
 if [ ! -z "$transform_dir" ]; then
   echo "$0: using transforms from $transform_dir"
-  [ ! -f $transform_dir/trans.1 ] && echo "$0: no such file $transform_dir/trans.1" && exit 1;
-  [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
-    && echo "$0: #jobs mismatch with transform-dir." && exit 1;
-  feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark,s,cs:$transform_dir/trans.JOB ark:- ark:- |"
-elif grep 'transform-feats --utt2spk' $srcdir/log/acc.0.1.log 2>/dev/null; then
-  echo "$0: **WARNING**: you seem to be using an SGMM system trained with transforms,"
-  echo "  but you are not providing the --transform-dir option during alignment."
+  if [ "$feat_type" == "fmllr" ]; then
+    [ ! -f $transform_dir/trans.1 ] && echo "$0: no such file $transform_dir/trans.1" && exit 1;
+    [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
+      && echo "$0: #jobs mismatch with transform-dir." && exit 1;
+    feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark,s,cs:$transform_dir/trans.JOB ark:- ark:- |"
+  elif [[ "$feat_type" == "raw" ]]; then
+    [ ! -f $transform_dir/raw_trans.1 ] && echo "$0: no such file $transform_dir/raw_trans.1" && exit 1;
+    [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
+      && echo "$0: #jobs mismatch with transform-dir." && exit 1;
+    feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark,s,cs:$transform_dir/raw_trans.JOB ark:- ark:- |"
+  fi
+elif grep 'transform-feats --utt2spk' $srcdir/log/train.1.log >&/dev/null; then
+  echo "$0: **WARNING**: you seem to be using a neural net system trained with transforms,"
+  echo "  but you are not providing the --transform-dir option in test time."
 fi
 
 # Finally add feature_transform and the MLP
@@ -109,3 +121,5 @@ if [ "$align_to_lats" == "true" ]; then
 fi
 
 echo "$0: done aligning data."
+
+}

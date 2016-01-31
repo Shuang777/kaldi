@@ -26,6 +26,9 @@ max_mem=20000000 # This will stop the processes getting too large.
 # End configuration section.
 use_gpu=no # yes|no|optional
 parallel_opts="-pe smp 2"
+feat_type=traps
+cmvn_opts="--norm-vars=false"
+splice_opts=
 echo "$0 $@"  # Print the command line for logging
 
 [ -f ./path.sh ] && . ./path.sh; # source the path.
@@ -96,49 +99,36 @@ for f in $sdata/1/feats.scp $nnet $model $feature_transform $class_frame_counts;
   [ ! -f $f ] && echo "$0: missing file $f" && exit 1;
 done
 
-
 # PREPARE FEATURE EXTRACTION PIPELINE
-# Create the feature stream:
-if [ ! -z "$transform_dir" ]; then # add transforms to features...
-  splice_opts=`cat $transform_dir/splice_opts 2>/dev/null`
-  norm_vars=`cat $transform_dir/norm_vars 2>/dev/null` || norm_vars=false # cmn/cmvn option, default false.
-  if [ -f $transform_dir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
-  
-  echo "align_si.sh: feature type is $feat_type"
-  case $feat_type in
-    delta) feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | add-deltas ark:- ark:- |";;
-    lda) feats="ark,s,cs:apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $transform_dir/final.mat ark:- ark:- |"
-         cp $transform_dir/final.mat $dir    
-   ;;
-    *) echo "Invalid feature type $feat_type" && exit 1;
-esac
 
-  echo "$0: using fMLLR transforms from $transform_dir"
-  [ ! -f $transform_dir/trans.1 ] && echo "Expected $transform_dir/trans.1 to exist."
-  [ "`cat $transform_dir/num_jobs`" -ne "$nj" ] \
-    && echo "$0: mismatch in number of jobs with $transform_dir" && exit 1;
-  [ -f $transform_dir/final.mat ] && ! cmp $transform_dir/final.mat $transform_dir/final.mat && \
-     echo "$0: LDA transforms differ between $transform_dir and $transform_dir"
-  feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark:$transform_dir/trans.JOB ark:- ark:- |"
-else
-  echo "Assuming you don't have a SAT system, since no --transform-dir option supplied "
-  feats="ark,s,cs:copy-feats scp:$sdata/JOB/feats.scp ark:- |"
-  # Optionally add cmvn
-  if [ -f $srcdir/norm_vars ]; then
-    norm_vars=$(cat $srcdir/norm_vars 2>/dev/null)
-    [ ! -f $sdata/1/cmvn.scp ] && echo "$0: cannot find cmvn stats $sdata/1/cmvn.scp" && exit 1
-    feats="$feats apply-cmvn --norm-vars=$norm_vars --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp ark:- ark:- |"
+# Create the feature stream:
+case $feat_type in
+  raw) feats="scp:$sdata/JOB/feats.scp ark:- |";;
+  smvn|traps) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- |";;
+  delta) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | add-deltas ark:- ark:- |";;
+  lda|fmllr) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | splice-feats $splice_opts ark:- ark:- | transform-feats $srcdir/final.mat ark:- ark:- |" ;;
+  *) echo "$0: invalid feature type $feat_type" && exit 1;
+esac
+if [ ! -z "$transform_dir" ]; then
+  echo "$0: using transforms from $transform_dir"
+  if [ "$feat_type" == "fmllr" ]; then
+    [ ! -f $transform_dir/trans.1 ] && echo "$0: no such file $transform_dir/trans.1" && exit 1;
+    [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
+      && echo "$0: #jobs mismatch with transform-dir." && exit 1;
+    feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark,s,cs:$transform_dir/trans.JOB ark:- ark:- |"
+  elif [[ "$feat_type" == "raw" ]]; then
+    [ ! -f $transform_dir/raw_trans.1 ] && echo "$0: no such file $transform_dir/raw_trans.1" && exit 1;
+    [ "$nj" -ne "`cat $transform_dir/num_jobs`" ] \
+      && echo "$0: #jobs mismatch with transform-dir." && exit 1;
+    feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark,s,cs:$transform_dir/raw_trans.JOB ark:- ark:- |"
   fi
-  # Optionally add deltas
-  if [ -f $srcdir/delta_order ]; then
-    delta_order=$(cat $srcdir/delta_order)
-    feats="$feats add-deltas --delta-order=$delta_order ark:- ark:- |"
-  fi
+elif grep 'transform-feats --utt2spk' $srcdir/log/train.1.log >&/dev/null; then
+  echo "$0: **WARNING**: you seem to be using a neural net system trained with transforms,"
+  echo "  but you are not providing the --transform-dir option in test time."
 fi
 
 # Finally add feature_transform and the MLP
 feats="$feats nnet-forward --feature-transform=$feature_transform --no-softmax=true --class-frame-counts=$class_frame_counts --use-gpu=$use_gpu $nnet ark:- ark:- |"
-
 
 echo "$0: generating denlats from data '$data', putting lattices in '$dir'"
 #1) Generate the denominator lattices
