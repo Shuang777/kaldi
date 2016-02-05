@@ -87,6 +87,7 @@ IvectorExtractorStats::IvectorExtractorStats(const IvectorExtractor& extractor,
     supV_iV_[i].Resize(extractor.FeatDim(), extractor.IvectorDim());
     supV_supV_[i].Resize(extractor.FeatDim());
   }
+  sum_iV_.Resize(extractor.IvectorDim());
 }
 
 
@@ -94,16 +95,14 @@ void IvectorExtractorStats::AccStatsForUtterance(const IvectorExtractor &extract
                                                  const VectorBase<double> &supervector) {
   Vector<double> ivector(extractor.IvectorDim());
   Vector<double> normalized_supervector(supervector.Dim());
-  if (!config_.random_ivector)
-    extractor.GetIvectorDistribution(supervector, &ivector, &normalized_supervector);
-  else
-    ivector.SetRandn();
+  extractor.GetIvectorDistribution(supervector, &ivector, &normalized_supervector);
   iV_iV_.AddVec2(1.0, ivector);
   for (int32 i = 0; i < extractor.NumGauss(); i++) {
     SubVector<double> gaussvector(normalized_supervector, i*extractor.FeatDim(), extractor.FeatDim());
     supV_iV_[i].AddVecVec(1.0, gaussvector, ivector);
     supV_supV_[i].AddVec2(1.0, gaussvector);
   }
+  sum_iV_.AddVec(1.0, ivector);
   num_ivectors_++;
 }
 
@@ -121,6 +120,8 @@ void IvectorExtractorStats::Write(std::ostream &os, bool binary) const {
   WriteBasicType(os, binary, size);
   for (int32 i = 0; i < size; i++)
     supV_supV_[i].Write(os, binary);
+  WriteToken(os, binary, "<sumiV>");
+  sum_iV_.Write(os, binary);
   WriteToken(os, binary, "<NumIvectors>");
   WriteBasicType(os, binary, num_ivectors_);
   WriteToken(os, binary, "</IvectorExtractorStats2>");
@@ -141,6 +142,8 @@ void IvectorExtractorStats::Read(std::istream &is, bool binary, bool add) {
   supV_supV_.resize(size);
   for (int32 i = 0; i < size; i++)
     supV_supV_[i].Read(is, binary, add);
+  ExpectToken(is, binary, "<sumiV>");
+  sum_iV_.Read(is, binary, add);
   ExpectToken(is, binary, "<NumIvectors>");
   ReadBasicType(is, binary, &num_ivectors_, add);
   ExpectToken(is, binary, "</IvectorExtractorStats2>");
@@ -153,11 +156,11 @@ void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExt
   iV2.AddSp(num_ivectors_, extractor.Var_);
   iV2.AddSp(1.0, iV_iV_);
 
+  // Update transform matrix
   if (!update_opts.floor_iv2) {
     // straight forward way of solving for A
     SpMatrix<double> iV2_inv(iV2);
     iV2_inv.Invert();
-    // Update transform matrix
     for (int32 i = 0; i < extractor.NumGauss(); i++) {
       extractor.A_[i].AddMatSp(1.0, supV_iV_[i], kNoTrans, iV2_inv, 0.0);
     }
@@ -204,6 +207,39 @@ void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExt
     }
     double floored_percent = tot_num_floored * 100.0 / (extractor.NumGauss() * extractor.FeatDim());
     KALDI_LOG << "Floored " << floored_percent << "% of all Gaussian eigenvalues";
+  }
+
+  // Update "Prior"
+  if (update_opts.update_prior) {
+    Vector<double> sum(sum_iV_);
+    sum.Scale(1.0 / num_ivectors_);
+    SpMatrix<double> covar(iV_iV_);
+    covar.Scale(1.0 / num_ivectors_);
+    covar.AddVec2(-1.0, sum); // Get the centered covariance.
+    int32 ivector_dim = extractor.IvectorDim();
+    Vector<double> s(ivector_dim);
+    Matrix<double> P(ivector_dim, ivector_dim);
+    // decompose covar = P diag(s) P^T:
+    covar.Eig(&s, &P);
+    KALDI_LOG << "Eigenvalues of iVector covariance range from "
+              << s.Min() << " to " << s.Max();
+    int32 num_floored = s.ApplyFloor(1.0e-07);
+    if (num_floored > 0)
+    KALDI_WARN << "Floored " << num_floored << " eigenvalues of covar "
+               << "of iVectors.";
+    Matrix<double> T(P, kTrans);
+    { // set T to a transformation that makes covar unit
+      // (modulo floored eigenvalues).
+      Vector<double> scales(s);
+      scales.ApplyPow(-0.5);
+      T.MulRowsVec(scales);
+      if (num_floored == 0) { // a check..
+        SpMatrix<double> Tproj(ivector_dim);
+        Tproj.AddMat2Sp(1.0, T, kNoTrans, covar, 0.0);
+        KALDI_ASSERT(Tproj.IsUnit(1.0e-06));
+      }
+    }
+    extractor.TransformIvectors(T);
   }
 
   extractor.ComputeDerivedValues();
@@ -262,16 +298,16 @@ IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, const Iv
 }
 
 void IvectorExtractor::GetIvectorDistribution(const VectorBase<double> &supervector, VectorBase<double> *mean,
-                                              VectorBase<double> *normalized_supvervector, double *auxf) const {
-  if (normalized_supvervector == NULL)
-    normalized_supvervector = new Vector<double> (supervector);
+                                              VectorBase<double> *normalized_supervector, double *auxf) const {
+  if (normalized_supervector == NULL)
+    normalized_supervector = new Vector<double> (supervector);
   else
-    normalized_supvervector->CopyFromVec(supervector);
-  normalized_supvervector->AddVec(-1.0, mu_);
+    normalized_supervector->CopyFromVec(supervector);
+  normalized_supervector->AddVec(-1.0, mu_);
   Vector<double> linear(IvectorDim());
   int32 feat_dim = FeatDim();
   for (int32 i = 0; i < NumGauss(); i++) {
-    SubVector<double> x(*normalized_supvervector, i*feat_dim, feat_dim);
+    SubVector<double> x(*normalized_supervector, i*feat_dim, feat_dim);
     linear.AddMatVec(1.0, Psi_inv_A_[i], kTrans, x, 1.0);
   }
   mean->AddSpVec(1.0, Var_, linear, 0.0);
@@ -287,6 +323,13 @@ void IvectorExtractor::ComputeDerivedValues() {
   }
   Var_.AddToDiag(1.0);
   Var_.Invert();
+}
+
+void IvectorExtractor::TransformIvectors(const MatrixBase< double > & T) {
+  Matrix<double> Tinv(T);
+  Tinv.Invert();
+  for (int32 i = 0; i < NumGauss(); i++)
+    A_[i].AddMatMat(1.0, Matrix<double>(A_[i]), kNoTrans, Tinv, kNoTrans, 0.0);
 }
 
 void IvectorExtractor::Write(std::ostream &os, bool binary, const bool write_derived /* = false */) const {

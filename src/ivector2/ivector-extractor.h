@@ -98,6 +98,8 @@ class IvectorExtractor {
   void GetIvectorDistribution(const VectorBase<double> &supervector, VectorBase<double> *mean, 
                               VectorBase<double> *normalized_supvervector = NULL, double *auxf = NULL) const;
 
+  void TransformIvectors(const MatrixBase< double > & T);
+
   void ComputeDerivedValues();
 
   std::string Info();
@@ -130,11 +132,14 @@ struct IvectorExtractorEstimationOptions {
   bool update_variance;
   double variance_floor_factor;
   bool floor_iv2;
-  IvectorExtractorEstimationOptions(): update_variance(true), variance_floor_factor(0), floor_iv2(false) { }
+  bool update_prior;
+  IvectorExtractorEstimationOptions(): update_variance(true), variance_floor_factor(0), 
+         floor_iv2(false), update_prior(false) { }
   void Register(OptionsItf *po) {
     po->Register("update-variance", &update_variance, "Update variance of noise term");
     po->Register("variance-floor-factor", &variance_floor_factor, "Factor that determines variance flooring (we floor each covar to this times global average covariance");
     po->Register("floor-iv2", &floor_iv2, "Floor the matrix for transformation estimation");
+    po->Register("update-prior", & update_prior, "Update transformation matrix like is done in Kaldi default update prior function");
   }
 };
 
@@ -161,6 +166,7 @@ class IvectorExtractorStats {
   std::vector<Matrix<double> > supV_iV_;
   SpMatrix<double> iV_iV_;
   std::vector<SpMatrix<double> > supV_supV_;
+  Vector<double> sum_iV_;
   double num_ivectors_;
 };
 
