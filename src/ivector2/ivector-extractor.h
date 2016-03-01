@@ -110,22 +110,14 @@ private:
   IvectorExtractorOptions opts_;
 
   Vector<double> mu_;
+  double prior_offset_;
+
   std::vector<Matrix<double> > A_;
   std::vector<SpMatrix<double> > Psi_inv_;
 
   // derived values
   std::vector<Matrix<double> > Psi_inv_A_;
   SpMatrix<double> Var_;
-};
-
-struct IvectorExtractorStatsOptions {
-  bool random_ivector;
-
-  IvectorExtractorStatsOptions(): random_ivector(false) { }
-  void Register(OptionsItf *po) {
-    po->Register("random-ivector", &random_ivector, "If true, set ivector"
-                 "randomly for initialization");
-  }
 };
 
 struct IvectorExtractorEstimationOptions {
@@ -149,7 +141,7 @@ class IvectorExtractorStats {
 
   IvectorExtractorStats() {};
 
-  IvectorExtractorStats(const IvectorExtractor& extractor, const IvectorExtractorStatsOptions& stats_opts);
+  IvectorExtractorStats(const IvectorExtractor& extractor);
   
   void AccStatsForUtterance(const IvectorExtractor &extractor, const VectorBase<double> &supervector);
   
@@ -162,7 +154,6 @@ class IvectorExtractorStats {
   double GetAuxfValue(const IvectorExtractor &extractor) const;
 
  private:
-  IvectorExtractorStatsOptions config_; /// Caution: if we read from disk, this
   std::vector<Matrix<double> > supV_iV_;
   SpMatrix<double> iV_iV_;
   std::vector<SpMatrix<double> > supV_supV_;

@@ -77,9 +77,7 @@ void IvectorExtractorInitStats::AccStats(const VectorBase<double> &supervector) 
   num_samples++;
 }
 
-IvectorExtractorStats::IvectorExtractorStats(const IvectorExtractor& extractor,
-                                             const IvectorExtractorStatsOptions& stats_opts):
-                                             config_(stats_opts) {
+IvectorExtractorStats::IvectorExtractorStats(const IvectorExtractor& extractor) {
   supV_iV_.resize(extractor.NumGauss());
   supV_supV_.resize(extractor.NumGauss());
   iV_iV_.Resize(extractor.IvectorDim());
