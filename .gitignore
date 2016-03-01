@@ -361,6 +361,7 @@
 /src/gmmbin/gmm-global-init-from-feats
 /src/gmmbin/gmm-latgen-faster-parallel
 /src/gmmbin/gmm-latgen-tracking
+/src/gmmbin/amgmm-gselect-post
 
 # /src/hmm/
 /src/hmm/.depend.mk
