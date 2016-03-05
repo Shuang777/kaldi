@@ -180,9 +180,10 @@ void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExt
     bool floor_psi = (update_opts.variance_floor_factor != 0) ;
 
     for (int32 i = 0; i < extractor.NumGauss(); i++) {
-      tmp_Psi.AddMatMat(-1.0, extractor.A_[i], kNoTrans, supV_iV_[i], kTrans, 0.0);
+      tmp_Psi.AddMatMat(-2.0, extractor.A_[i], kNoTrans, supV_iV_[i], kTrans, 0.0);
       extractor.Psi_inv_[i].CopyFromMat(tmp_Psi);
       extractor.Psi_inv_[i].AddSp(1.0, supV_supV_[i]);
+      extractor.Psi_inv_[i].AddMat2Sp(1.0, extractor.A_[i], kNoTrans, iV2);
       extractor.Psi_inv_[i].Scale(1.0 / num_ivectors_);
       if (floor_psi) {
         tot_Psi.AddSp(1.0, extractor.Psi_inv_[i]);
@@ -246,16 +247,27 @@ void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExt
 double IvectorExtractorStats::GetAuxfValue(const IvectorExtractor &extractor) const {
   double logDetPsi = 0;
   double trace2nd = 0;
-  Matrix<double> tmp_mat;
-  tmp_mat.Resize(extractor.FeatDim(), extractor.FeatDim());
-  Matrix<double> tmp_mat_Psi_inv(tmp_mat);
+  Matrix<double> tmp_mat(extractor.FeatDim(), extractor.FeatDim());
+  SpMatrix<double> tmp_mat_sp(extractor.FeatDim());
+  Matrix<double> tmp_mat_Psi_inv(extractor.FeatDim(), extractor.FeatDim());
+
+  SpMatrix<double> iV2;
+  iV2.Resize(extractor.IvectorDim());
+  iV2.AddSp(num_ivectors_, extractor.Var_);
+  iV2.AddSp(1.0, iV_iV_);
+
   for (int32 i = 0; i < extractor.NumGauss(); i++) {
     logDetPsi -= extractor.Psi_inv_[i].LogDet();
     tmp_mat.CopyFromSp(supV_supV_[i]);
-    tmp_mat.AddMatMat(-1.0, supV_iV_[i], kNoTrans, extractor.A_[i], kTrans, 1.0);
-    tmp_mat_Psi_inv.AddMatSp(1.0, tmp_mat, kNoTrans, extractor.Psi_inv_[i], 0.0);
+    tmp_mat.AddMatMat(-2.0, supV_iV_[i], kNoTrans, extractor.A_[i], kTrans, 1.0);
+    tmp_mat_sp.CopyFromMat(tmp_mat);
+    tmp_mat_sp.AddMat2Sp(1.0, extractor.A_[i], kNoTrans, iV2);
+
+    tmp_mat_Psi_inv.AddSpSp(1.0, tmp_mat_sp, extractor.Psi_inv_[i], 0.0);
     trace2nd += tmp_mat_Psi_inv.Trace();
   }
+  trace2nd += iV2.Trace();
+
   double auxf = - num_ivectors_ / 2 * logDetPsi - trace2nd / 2;
   return auxf;
 }
@@ -293,6 +305,8 @@ IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, const Iv
     }
     Psi_inv_[i].Invert();
   }
+
+  ComputeDerivedValues();
 }
 
 void IvectorExtractor::GetIvectorDistribution(const VectorBase<double> &supervector, VectorBase<double> *mean,

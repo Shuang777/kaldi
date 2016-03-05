@@ -41,9 +41,7 @@ int main(int argc, char *argv[]) {
 
     ParseOptions po(usage);
     bool binary = true;
-    IvectorExtractorStatsOptions stats_opts;
     po.Register("binary", &binary, "Write output in binary mode");
-    stats_opts.Register(&po);
 
     po.Read(argc, argv);
     
@@ -65,7 +63,7 @@ int main(int argc, char *argv[]) {
     IvectorExtractor extractor;
     ReadKaldiObject(ivector_extractor_rxfilename, &extractor);
     
-    IvectorExtractorStats stats(extractor, stats_opts);
+    IvectorExtractorStats stats(extractor);
     
     int32 num_done = 0;
     

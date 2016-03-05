@@ -1,4 +1,4 @@
-// ivector2bin/ivector-model-info.cc
+// ivector2bin/ivector-model-copy.cc
 
 // Copyright    2016  Hang Su
 
@@ -28,25 +28,32 @@ int main(int argc, char *argv[]) {
     using namespace kaldi::ivector2;
     
     const char *usage =
-        "Print model information"
-        "Usage: ivector-model-est [options] <model-in>\n";
+        "Copy ivector extractor\n"
+        "Usage: ivector-model-copy [options] <model-in> <model-out>\n";
 
     ParseOptions po(usage);
+    bool binary = true;
+    po.Register("binary", &binary, "Write output in binary mode");
     po.Read(argc, argv);
 
-    if (po.NumArgs() != 1) {
+    if (po.NumArgs() != 2) {
       po.PrintUsage();
       exit(1);
     }
 
-    std::string model_rxfilename = po.GetArg(1);
+    std::string model_rxfilename = po.GetArg(1),
+                model_wxfilename = po.GetArg(2);
+
 
     KALDI_LOG << "Reading model";
     IvectorExtractor extractor;
     ReadKaldiObject(model_rxfilename, &extractor);
 
-    std::cout << extractor.Info();
-
+    {
+      Output ko(model_wxfilename, binary);
+      extractor.Write(ko.Stream(), binary);
+    }
+ 
     return 0;
   } catch(const std::exception &e) {
     std::cerr << e.what() << '\n';

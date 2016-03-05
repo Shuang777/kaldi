@@ -403,12 +403,24 @@
 # /src/ivector2bin/
 /src/ivector2bin/.depend.mk
 /src/ivector2bin/gen-gmm-supervector
-/src/ivector2bin/ivector-model-init
+/src/ivector2bin/ivector2-model-init
 /src/ivector2bin/ivector2-extract
-/src/ivector2bin/ivector-model-acc-stats
-/src/ivector2bin/ivector-model-sum-stats
-/src/ivector2bin/ivector-model-est
-/src/ivector2bin/ivector-model-info
+/src/ivector2bin/ivector2-model-acc-stats
+/src/ivector2bin/ivector2-model-sum-stats
+/src/ivector2bin/ivector2-model-est
+/src/ivector2bin/ivector2-model-info
+/src/ivector2bin/ivector2-model-copy
+
+# /src/ivector3bin/
+/src/ivector3bin/.depend.mk
+/src/ivector3bin/ivector3-model-init
+/src/ivector3bin/ivector3-model-init-from-feat
+/src/ivector3bin/ivector3-extract
+/src/ivector3bin/ivector3-model-acc-stats
+/src/ivector3bin/ivector3-model-sum-stats
+/src/ivector3bin/ivector3-model-est
+/src/ivector3bin/ivector3-model-info
+/src/ivector3bin/ivector3-model-copy
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk
