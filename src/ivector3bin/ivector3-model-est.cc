@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
                 << model_wxfilename;
     }
 
-    double auxf = 0;// stats.GetAuxfValue(extractor);
+    double auxf = stats.GetAuxfValue(extractor);
     KALDI_LOG << "Aux-function value after update is " << auxf;
 
     if (check_change == true) {

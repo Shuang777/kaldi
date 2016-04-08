@@ -104,7 +104,10 @@ int main(int argc, char *argv[]) {
       double *auxf_ptr = NULL;
       if (compute_objf)
         auxf_ptr = &this_auxf;
-      extractor.GetIvectorDistribution(stats, &ivector, NULL, NULL, auxf_ptr);
+
+      bool for_scoring = true;
+      extractor.GetIvectorDistribution(stats, &ivector, NULL, NULL, auxf_ptr, for_scoring);
+      
       tot_auxf += this_auxf;
 
       ivector_writer.Write(key, ivector);

@@ -53,64 +53,25 @@ class IvectorExtractorUtteranceStats {
 struct IvectorExtractorOptions {
   int ivector_dim;
   bool diagonal_variance;
-  IvectorExtractorOptions(): ivector_dim(400), diagonal_variance(true) { }
+  bool prior_mode;
+  IvectorExtractorOptions(): ivector_dim(400), diagonal_variance(false), prior_mode(true) { }
   void Register(OptionsItf *po) {
     po->Register("ivector-dim", &ivector_dim, "Dimension of iVector");
     po->Register("diagonal-variance", &diagonal_variance, "Restrict variance to be diagonal");
+    po->Register("prior-mode", &prior_mode, "Use baked-in prior as Kaldi or not");
   }
-};
-
-class IvectorExtractor {
- public:
-  friend class IvectorExtractorStats;
-
-  IvectorExtractor() {}
-
-  IvectorExtractor(const IvectorExtractorOptions &opts, int32 feat_dim, int32 num_gauss);
-  
-  IvectorExtractor(const IvectorExtractorOptions &opts, const IvectorExtractorUtteranceStats &stats);
-
-  IvectorExtractor(const IvectorExtractorOptions &opts, const FullGmm &fgmm);
-
-  int32 FeatDim() const {  return A_.front().NumRows(); }
-
-  int32 IvectorDim() const {  return A_.front().NumCols(); }
-
-  int32 NumGauss() const {  return A_.size(); }
-
-  int32 SupervectorDim() const { return mu_.NumCols() * mu_.NumRows(); }
-
-  void Write(std::ostream &os, bool binary, const bool write_derived = false) const;
-
-  void Read(std::istream &is, bool binary, const bool read_derived = false) ;
-
-  void GetIvectorDistribution(const IvectorExtractorUtteranceStats &stats, VectorBase<double> *mean,
-                              SpMatrix< double > *var = NULL, MatrixBase<double> * normalized_gammasup = NULL, 
-                              double *auxf = NULL) const;
-
-  double ComputeAuxf(const IvectorExtractorUtteranceStats &stats, const VectorBase<double> &mean,
-                     const SpMatrix<double> &quadratic, const MatrixBase<double> &normalized_gammasup) const;
-
-  void TransformIvectors(const MatrixBase< double > & T);
-
-  void ComputeDerivedValues();
-
-  std::string Info();
-
-  int32 NumParams();
-
-private:
-  IvectorExtractorOptions opts_;
-
-  Matrix<double> mu_;
-  double prior_offset_;
-
-  std::vector<Matrix<double> > A_;
-  std::vector<SpMatrix<double> > Psi_inv_;
-
-  // derived values
-  std::vector<Matrix<double> > Psi_inv_A_;
-  Matrix<double> AT_Psi_inv_A_;     // each row is the covariance mat of a component
+  void Write(std::ostream &os, bool binary) const {
+    WriteToken(os, binary, "<DiagonalVariance>");
+    WriteBasicType(os, binary, diagonal_variance);
+    WriteToken(os, binary, "<PriorMode>");
+    WriteBasicType(os, binary, prior_mode);
+  }
+  void Read(std::istream &is, bool binary) {
+    ExpectToken(is, binary, "<DiagonalVariance>");
+    ReadBasicType(is, binary, &diagonal_variance);
+    ExpectToken(is, binary, "<PriorMode>");
+    ReadBasicType(is, binary, &prior_mode);
+  }
 };
 
 struct IvectorExtractorEstimationOptions {
@@ -119,10 +80,12 @@ struct IvectorExtractorEstimationOptions {
   bool floor_iv2;
   bool update_prior;
   double gaussian_min_count; 
-  IvectorExtractorEstimationOptions(): update_variance(true), variance_floor_factor(0), 
-         floor_iv2(false), update_prior(false), gaussian_min_count(100.0) { }
+  bool diagonalize;
+  IvectorExtractorEstimationOptions(): update_variance(true), variance_floor_factor(0.1), 
+         floor_iv2(false), update_prior(false), gaussian_min_count(100.0), diagonalize(true) { }
   void Register(OptionsItf *po) {
     po->Register("update-variance", &update_variance, "Update variance of noise term");
+    po->Register("diagonalize", &diagonalize, "diagonalizes the quadratic term.");
     po->Register("variance-floor-factor", &variance_floor_factor, "Factor that determines variance flooring (we floor each covar to this times global average covariance");
     po->Register("floor-iv2", &floor_iv2, "Floor the matrix for transformation estimation");
     po->Register("update-prior", & update_prior, "Update transformation matrix like is done in Kaldi default update prior function");
@@ -131,6 +94,8 @@ struct IvectorExtractorEstimationOptions {
                    "update any associated parameters.");
   }
 };
+
+class IvectorExtractor;
 
 class IvectorExtractorStats {
  public:
@@ -151,6 +116,12 @@ class IvectorExtractorStats {
 
   double GetAuxfValue(const IvectorExtractor &extractor) const;
 
+  double GetAuxfValueIvectorPrior(const IvectorExtractor &extractor) const;
+
+  double GetAuxfValueLikelihood(const IvectorExtractor &extractor) const;
+  
+  void GetOrthogonalIvectorTransform(const SubMatrix<double> &T, IvectorExtractor &extractor, Matrix<double> *A) const;
+
  private:
   std::vector<Matrix<double> > gamma_supV_iV_;
   Matrix<double> gamma_iV_iV_;
@@ -161,8 +132,70 @@ class IvectorExtractorStats {
   double num_ivectors_;
 };
 
+class IvectorExtractor {
+ public:
+  friend class IvectorExtractorStats;
 
-}  // namespace ivector2
+  IvectorExtractor() :  prior_offset_(0.0) { }
+
+  IvectorExtractor(const IvectorExtractorOptions &opts, const IvectorExtractorUtteranceStats &stats);
+
+  IvectorExtractor(const IvectorExtractorOptions &opts, const FullGmm &fgmm);
+
+  int32 FeatDim() const {  return A_.front().NumRows(); }
+
+  int32 IvectorDim() const {  return A_.front().NumCols(); }
+
+  int32 NumGauss() const {  return A_.size(); }
+
+  int32 SupervectorDim() const { return mu_.NumCols() * mu_.NumRows(); }
+
+  void Write(std::ostream &os, bool binary, const bool write_derived = false) const;
+
+  void Read(std::istream &is, bool binary, const bool read_derived = false) ;
+
+  void GetIvectorDistribution(const IvectorExtractorUtteranceStats &stats, VectorBase<double> *mean,
+                              SpMatrix< double > *var = NULL, MatrixBase<double> * normalized_gammasup = NULL, 
+                              double *auxf = NULL, bool for_scoring = false) const;
+
+  double ComputeAuxf(const IvectorExtractorUtteranceStats &stats, const VectorBase<double> &mean,
+                     const SpMatrix<double> &quadratic, const MatrixBase<double> &normalized_gammasup) const;
+
+  void TransformIvectors(const MatrixBase< double > & T);
+
+  void ComputeDerivedVariables();
+
+  void SetPriorOffset(double new_prior_offset) { prior_offset_ = new_prior_offset; }
+
+  std::string Info() const;
+
+  int32 NumParams() const;
+
+  bool PriorMode() const { return opts_.prior_mode; }
+
+  double PriorOffset() const { return prior_offset_; }
+
+  double GetPsiLogDet(int32 k) const { return -Psi_inv_[k].LogDet(); }
+
+private:
+  IvectorExtractorOptions opts_;
+
+  Vector< double >  w_vec_;   // Gaussian mixture weights from the UBM.
+  Matrix<double> mu_;
+  double prior_offset_;
+
+  Vector<double>  gconsts_;
+
+  std::vector<Matrix<double> > A_;
+  std::vector<SpMatrix<double> > Psi_inv_;
+
+  // derived values
+  std::vector<Matrix<double> > Psi_inv_A_;
+  Matrix<double> AT_Psi_inv_A_;     // each row is the covariance mat of a component
+};
+
+
+}  // namespace ivector3
 }  // namespace kaldi
 
 #endif

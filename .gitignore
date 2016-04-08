@@ -421,6 +421,7 @@
 /src/ivector3bin/ivector3-model-est
 /src/ivector3bin/ivector3-model-info
 /src/ivector3bin/ivector3-model-copy
+/src/ivector3bin/ivector3-model-stats-copy
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk
