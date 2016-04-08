@@ -10,6 +10,6 @@ OBJFILES = ivector-extractor.o
 LIBNAME = kaldi-ivector3
 
 ADDLIBS = ../gmm/kaldi-gmm.a ../matrix/kaldi-matrix.a ../base/kaldi-base.a \
-        ../util/kaldi-util.a 
+        ../util/kaldi-util.a ../thread/kaldi-thread.a 
 
 include ../makefiles/default_rules.mk

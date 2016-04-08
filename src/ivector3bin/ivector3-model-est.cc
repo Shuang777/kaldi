@@ -41,6 +41,8 @@ int main(int argc, char *argv[]) {
     po.Register("check-change", &check_change, "Check auxf value before model update");
     bool update_model = true;
     po.Register("update-model", &update_model, "Update the model by performing M-step");
+    po.Register("num-threads", &g_num_threads,
+                "Number of threads used in update");
     
     update_opts.Register(&po);
     

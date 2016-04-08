@@ -17,6 +17,7 @@
 // limitations under the License.
 
 #include "ivector3/ivector-extractor.h"
+#include "thread/kaldi-task-sequence.h"
 #include "nnet/nnet-various.h"
 
 namespace kaldi {
@@ -228,9 +229,16 @@ void IvectorExtractorStats::GetOrthogonalIvectorTransform(
   KALDI_LOG << "Eigenvalues of Vavg: " << s;
 }
 
-void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExtractorEstimationOptions &update_opts) {
+void IvectorExtractorStats::UpdateProjection(
+    const IvectorExtractorEstimationOptions &update_opts,
+    int32 i,
+    IvectorExtractor *extractor) const {
+
   // Update transform matrix
-  int32 ivector_dim = extractor.IvectorDim();
+  int32 ivector_dim = extractor->IvectorDim();
+  int32 num_gauss = extractor->NumGauss();
+  KALDI_ASSERT(i >= 0 && i < num_gauss);
+
   SpMatrix<double> gamma_iV_iV_sp(ivector_dim, kUndefined);
   SubVector<double> gamma_iV_iV_sub(gamma_iV_iV_sp.Data(), ivector_dim * (ivector_dim+1) / 2);
 
@@ -239,21 +247,58 @@ void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExt
   solver_opts.name = "M";
   solver_opts.diagonal_precondition = true;
 
-  for (int32 i = 0; i < extractor.NumGauss(); i++) {
-    if (gamma_(i) < update_opts.gaussian_min_count) {
-      KALDI_WARN << "Skipping Gaussian index " << i << " because count "
-                 << gamma_(i) << " is below min-count.";
-      continue;
-    }
-    SubVector<double> gamma_iV_iV_vec(gamma_iV_iV_, i); // i'th row of R; vectorized form of SpMatrix.
-    gamma_iV_iV_sub.CopyFromVec(gamma_iV_iV_vec);       // copy to SpMatrix's memory.
-    if (!update_opts.floor_iv2) {     // straight forward way of solving for A
-      gamma_iV_iV_sp.Invert();
-      extractor.A_[i].AddMatSp(1.0, gamma_supV_iV_[i], kNoTrans, gamma_iV_iV_sp, 0.0);
-    } else {                          // Kaldi's solver
-      SolveQuadraticMatrixProblem(gamma_iV_iV_sp, gamma_supV_iV_[i], extractor.Psi_inv_[i], solver_opts, &extractor.A_[i]);
-    }
+  if (gamma_(i) < update_opts.gaussian_min_count) {
+    KALDI_WARN << "Skipping Gaussian index " << i << " because count "
+               << gamma_(i) << " is below min-count.";
+    return;
   }
+  SubVector<double> gamma_iV_iV_vec(gamma_iV_iV_, i); // i'th row of R; vectorized form of SpMatrix.
+  gamma_iV_iV_sub.CopyFromVec(gamma_iV_iV_vec);       // copy to SpMatrix's memory.
+  if (!update_opts.floor_iv2) {     // straight forward way of solving for A
+    gamma_iV_iV_sp.Invert();
+    extractor->A_[i].AddMatSp(1.0, gamma_supV_iV_[i], kNoTrans, gamma_iV_iV_sp, 0.0);
+  } else {                          // Kaldi's solver
+    SolveQuadraticMatrixProblem(gamma_iV_iV_sp, gamma_supV_iV_[i], extractor->Psi_inv_[i], solver_opts, &(extractor->A_[i]));
+  }
+}
+
+class IvectorExtractorUpdateProjectionClass {
+ public:
+  IvectorExtractorUpdateProjectionClass(const IvectorExtractorStats &stats,
+                        const IvectorExtractorEstimationOptions &opts,
+                        int32 i,
+                        IvectorExtractor *extractor):
+      stats_(stats), opts_(opts), i_(i), extractor_(extractor) { }
+  void operator () () {
+    stats_.UpdateProjection(opts_, i_, extractor_);
+  }
+ private:
+  const IvectorExtractorStats &stats_;
+  const IvectorExtractorEstimationOptions &opts_;
+  int32 i_;
+  IvectorExtractor *extractor_;
+};
+
+void IvectorExtractorStats::UpdateProjections(
+    const IvectorExtractorEstimationOptions &opts,
+    IvectorExtractor &extractor) const {
+
+  int32 num_gauss = extractor.NumGauss();
+  {
+    TaskSequencerConfig sequencer_opts;
+    sequencer_opts.num_threads = g_num_threads;
+    TaskSequencer<IvectorExtractorUpdateProjectionClass> sequencer(
+        sequencer_opts);
+    for (int32 i = 0; i < num_gauss; i++)
+      sequencer.Run(new IvectorExtractorUpdateProjectionClass(
+          *this, opts, i, &extractor));
+  }
+}
+
+
+void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExtractorEstimationOptions &update_opts) {
+  
+  UpdateProjections(update_opts, extractor);
 
   // Update variance
   if (update_opts.update_variance) {
@@ -264,6 +309,10 @@ void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExt
     SpMatrix<double> tot_Psi(feat_dim);
 
     bool floor_psi = (update_opts.variance_floor_factor != 0) ;
+
+    int32 ivector_dim = extractor.IvectorDim();
+    SpMatrix<double> gamma_iV_iV_sp(ivector_dim, kUndefined);
+    SubVector<double> gamma_iV_iV_sub(gamma_iV_iV_sp.Data(), ivector_dim * (ivector_dim+1) / 2);
 
     for (int32 i = 0; i < extractor.NumGauss(); i++) {
       if (gamma_(i) < update_opts.gaussian_min_count) continue; // warned in UpdateProjections

@@ -81,6 +81,7 @@ struct IvectorExtractorEstimationOptions {
   bool update_prior;
   double gaussian_min_count; 
   bool diagonalize;
+  int32 num_threads;
   IvectorExtractorEstimationOptions(): update_variance(true), variance_floor_factor(0.1), 
          floor_iv2(false), update_prior(false), gaussian_min_count(100.0), diagonalize(true) { }
   void Register(OptionsItf *po) {
@@ -121,6 +122,11 @@ class IvectorExtractorStats {
   double GetAuxfValueLikelihood(const IvectorExtractor &extractor) const;
   
   void GetOrthogonalIvectorTransform(const SubMatrix<double> &T, IvectorExtractor &extractor, Matrix<double> *A) const;
+
+  void UpdateProjection(const IvectorExtractorEstimationOptions &update_opts, 
+                        int32 i, IvectorExtractor *extractor) const;
+
+  void UpdateProjections(const IvectorExtractorEstimationOptions &opts, IvectorExtractor &extractor) const;
 
  private:
   std::vector<Matrix<double> > gamma_supV_iV_;
