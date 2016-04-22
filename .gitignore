@@ -400,6 +400,7 @@
 /src/ivectorbin/ivector-prep-pairs
 /src/ivectorbin/ivector-prep-product
 /src/ivectorbin/compare-vad
+/src/ivectorbin/ivector-extractor-stats-copy
 
 # /src/ivector2bin/
 /src/ivector2bin/.depend.mk
@@ -423,6 +424,7 @@
 /src/ivector3bin/ivector3-model-info
 /src/ivector3bin/ivector3-model-copy
 /src/ivector3bin/ivector3-model-stats-copy
+/src/ivector3bin/ivector3-model-post-to-post
 
 # /src/kwsbin/
 /src/kwsbin/.depend.mk
