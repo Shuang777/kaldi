@@ -22,6 +22,7 @@
 #include "util/common-utils.h"
 #include "gmm/am-diag-gmm.h"
 #include "hmm/posterior.h"
+#include "gmm/gmm-pdf-prior.h"
 
 using std::vector;
 using namespace kaldi;
@@ -59,6 +60,10 @@ int main(int argc, char *argv[]) {
     
     typedef kaldi::int32 int32;
     ParseOptions po(usage);
+
+    PdfPriorOptions prior_opts;
+    prior_opts.Register(&po);
+
     int32 num_post = 50;
     BaseFloat min_post = 0.0;
     po.Register("n", &num_post, "Number of Gaussians to keep per frame\n");
@@ -66,6 +71,7 @@ int main(int argc, char *argv[]) {
                 "before pruning and renormalizing (e.g. 0.01)");
     std::string post_rspecifier = "";
     po.Register("post-rspecifier", &post_rspecifier, "Given posterior to restrict search space\n");
+
     po.Read(argc, argv);
 
     if (po.NumArgs() != 3) {
@@ -77,6 +83,7 @@ int main(int argc, char *argv[]) {
         feature_rspecifier = po.GetArg(2),
         post_wspecifier = po.GetArg(3);
    
+
     AmDiagGmm am_gmm;
     TransitionModel trans_model;
     {
@@ -86,6 +93,14 @@ int main(int argc, char *argv[]) {
       am_gmm.Read(ki.Stream(), binary);
     }
  
+    Vector<BaseFloat> log_priors;
+    if (prior_opts.class_frame_counts != "") {
+      PdfPrior pdf_prior(prior_opts);
+      pdf_prior.GetLogPriors(&log_priors);
+    } else {
+      log_priors.Resize(am_gmm.Dim());
+    }
+
     KALDI_ASSERT(num_post > 0);
     KALDI_ASSERT(min_post < 1.0);
     int32 num_states = am_gmm.NumPdfs();
@@ -143,12 +158,12 @@ int main(int argc, char *argv[]) {
           for (int32 j = 0; j < old_post[i].size(); j++) {
             int32 s = old_post[i][j].first;
             double logll = am_gmm.LogLikelihood(s, feats.Row(i));
-            pairs.push_back(std::make_pair(logll, s));
+            pairs.push_back(std::make_pair(logll+log_priors(s), s));
           }
         } else {
           for (int32 s = 0 ; s < num_states; s++) {
             double logll = am_gmm.LogLikelihood(s, feats.Row(i));
-            pairs.push_back(std::make_pair(logll, s));
+            pairs.push_back(std::make_pair(logll+log_priors(s), s));
           }
           sort(pairs.rbegin(), pairs.rend());
           pairs.erase(pairs.begin()+num_post, pairs.end());
