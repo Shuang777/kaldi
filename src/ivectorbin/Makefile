@@ -23,7 +23,7 @@ BINFILES = ivector-extractor-init ivector-extractor-acc-stats \
 					 ivector-extractor-stats-print \
 					 ivector-compute-distance \
 					 ivector-prep-pairs ivector-compute-dot-distance \
-					 ivector-prep-product compare-vad
+					 ivector-prep-product compare-vad ivector-extractor-stats-copy
 
 OBJFILES =
 
