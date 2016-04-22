@@ -106,13 +106,13 @@ void IvectorExtractorStats::AccStatsForUtterance(const IvectorExtractor &extract
   IvectorExtractorUtteranceStats utt_stats(num_gauss, feat_dim, need_2nd_order_stats);
   utt_stats.AccStats(feats, post);
 
-
   Vector<double> ivector(ivector_dim);
   Matrix<double> normalized_gammasup(num_gauss, feat_dim);
   SpMatrix<double> ivector_var(ivector_dim);
 
   extractor.GetIvectorDistribution(utt_stats, &ivector, &ivector_var, &normalized_gammasup);
   
+  gamma_iV_lock_.Lock();
   gamma_.AddVec(1.0, utt_stats.gamma_);
 
   SpMatrix<double> ivec_scatter(ivector_var);
@@ -120,27 +120,33 @@ void IvectorExtractorStats::AccStatsForUtterance(const IvectorExtractor &extract
   SubVector<double> ivec_scatter_vec(ivec_scatter.Data(),
                                      ivector_dim * (ivector_dim + 1) / 2);
   gamma_iV_iV_.AddVecVec(1.0, utt_stats.gamma_, ivec_scatter_vec);
+  sum_iV_.AddVec(1.0, ivector);
+  iV_iV_.AddSp(1.0, ivec_scatter);
+  num_ivectors_++;
+  gamma_iV_lock_.Unlock();
+
+  gamm_supV_iV_lock_.Lock();
+  for (int32 i = 0; i < extractor.NumGauss(); i++) {
+    gamma_supV_iV_[i].AddVecVec(1.0, normalized_gammasup.Row(i), ivector);
+  }
+  gamm_supV_iV_lock_.Unlock();
+  
 
   Matrix<double> XsupsupX (feat_dim, feat_dim);
   SpMatrix<double> XsupsupX_sp (feat_dim);
+  gamma_supV_supV_lock_.Lock();
   for (int32 i = 0; i < extractor.NumGauss(); i++) {
-    if (utt_stats.gamma_(i) == 0)
-      continue;
-    gamma_supV_iV_[i].AddVecVec(1.0, normalized_gammasup.Row(i), ivector);
     //gamma_supV_supV_[i].AddVec2(1.0 / utt_stats.gamma_(i), normalized_gammasup.Row(i));
     gamma_supV_supV_[i].AddSp(1.0, utt_stats.S_[i]);
     if (!extractor.PriorMode()) {
       XsupsupX.SetZero();
-      XsupsupX.AddVecVec(1.0, utt_stats.X_.Row(i), extractor.mu_.Row(i));
       XsupsupX.AddVecVec(1.0, extractor.mu_.Row(i), utt_stats.X_.Row(i));
+      XsupsupX.AddVecVec(1.0, normalized_gammasup.Row(i), extractor.mu_.Row(i));
       XsupsupX_sp.CopyFromMat(XsupsupX);
       gamma_supV_supV_[i].AddSp(-1.0, XsupsupX_sp);
-      gamma_supV_supV_[i].AddVec2(utt_stats.gamma_(i), extractor.mu_.Row(i));
     }
   }
-  sum_iV_.AddVec(1.0, ivector);
-  iV_iV_.AddSp(1.0, ivec_scatter);
-  num_ivectors_++;
+  gamma_supV_supV_lock_.Unlock();
 }
 
 void IvectorExtractorStats::Write(std::ostream &os, bool binary) const {
@@ -420,13 +426,19 @@ void IvectorExtractorStats::Update(IvectorExtractor &extractor, const IvectorExt
       extractor.TransformIvectors(T);
     }
   }
+  if (update_opts.update_weights) {
+    extractor.w_vec_.CopyFromVec(gamma_);
+    extractor.w_vec_.Scale(1.0/gamma_.Sum());
+  }
   extractor.ComputeDerivedVariables();
 }
 
 
 double IvectorExtractorStats::GetAuxfValueIvectorPrior(const IvectorExtractor &extractor) const {
   int32 ivector_dim = extractor.IvectorDim();
-  return (-ivector_dim / 2 * num_ivectors_ * M_LOG_2PI - iV_iV_.Trace() / 2);
+  double const_part = -ivector_dim / 2 * num_ivectors_ * (M_LOG_2PI + log(extractor.lambda_));
+  double exp_part = - iV_iV_.Trace() / (2*extractor.lambda_);
+  return (const_part + exp_part);
 }
 
 double IvectorExtractorStats::GetAuxfValueLikelihood(const IvectorExtractor &extractor) const {
@@ -467,45 +479,11 @@ double IvectorExtractorStats::GetAuxfValueLikelihood(const IvectorExtractor &ext
 }
 
 double IvectorExtractorStats::GetAuxfValue(const IvectorExtractor &extractor) const {
-  int32 feat_dim = extractor.FeatDim();
-  int32 ivector_dim = extractor.IvectorDim();
   
   double auxf1 = GetAuxfValueIvectorPrior(extractor);
   double auxf2 = GetAuxfValueLikelihood(extractor);
 
   return auxf1 + auxf2;
-
-  Matrix<double> tmp_mat(feat_dim, feat_dim);
-  SpMatrix<double> tmp_sp_mat(feat_dim);
-  Matrix<double> tmp_mat_Psi_inv(feat_dim, feat_dim);
-  
-  SpMatrix<double> gamma_iV_iV_sp(ivector_dim, kUndefined);
-  SubVector<double> gamma_iV_iV_sub(gamma_iV_iV_sp.Data(), ivector_dim * (ivector_dim+1) / 2);
-
-  double logDetPsi = 0;
-  double trace2nd = 0;
-  double normivec = 0;
-
-  for (int32 i = 0; i < extractor.NumGauss(); i++) {
-    if (gamma_(i) != 0) {
-      logDetPsi += log(gamma_(i));
-    }
-    logDetPsi += extractor.Psi_inv_[i].LogDet();
-    tmp_mat.CopyFromSp(gamma_supV_supV_[i]);
-    tmp_mat.AddMatMat(-2.0, gamma_supV_iV_[i], kNoTrans, extractor.A_[i], kTrans, 1.0);
-    tmp_sp_mat.CopyFromMat(tmp_mat);
-
-    SubVector<double> gamma_iV_iV_vec(gamma_iV_iV_, i); // i'th row of R; vectorized form of SpMatrix.
-    gamma_iV_iV_sub.CopyFromVec(gamma_iV_iV_vec);       // copy to gamma_iV_iV_sp's memory.
-    tmp_sp_mat.AddMat2Sp(1.0, extractor.A_[i], kNoTrans, gamma_iV_iV_sp, 0.0);
-
-    tmp_mat_Psi_inv.AddSpSp(1.0, tmp_sp_mat, extractor.Psi_inv_[i], 0.0);
-    trace2nd += tmp_mat_Psi_inv.Trace();
-
-    normivec = 0;
-  }
-  double auxf = - gamma_.Sum() / 2 * logDetPsi - trace2nd / 2 - normivec / 2;
-  return auxf;
 }
 
 IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, const IvectorExtractorUtteranceStats &stats):
@@ -534,7 +512,8 @@ IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts, const Iv
 }
 
 IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts,
-                                   const FullGmm &fgmm) : opts_(opts) {
+                                   const FullGmm &fgmm, const double lambda, 
+                                   const bool compute_derived) : opts_(opts) {
   KALDI_ASSERT(opts.ivector_dim > 0);
   const int32 num_gauss = fgmm.NumGauss();
   const int32 feat_dim = fgmm.Dim();
@@ -545,6 +524,7 @@ IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts,
     Psi_inv_[i].CopyFromSp(inv_var);
   }
   
+  lambda_ = lambda;
   mu_.Resize(num_gauss, feat_dim);
   fgmm.GetMeans(&mu_);
 
@@ -563,35 +543,57 @@ IvectorExtractor::IvectorExtractor(const IvectorExtractorOptions &opts,
   w_vec_.Resize(fgmm.NumGauss());
   w_vec_.CopyFromVec(fgmm.weights());
 
-  ComputeDerivedVariables();
+  if (compute_derived)
+    ComputeDerivedVariables();
 }
+
+class IvectorExtractorComputeDerivedVarsClass {
+ public:
+  IvectorExtractorComputeDerivedVarsClass(IvectorExtractor *extractor,
+                                          int32 i):
+      extractor_(extractor), i_(i) { }
+  void operator () () { extractor_->ComputeDerivedVars(i_); }
+ private:
+  IvectorExtractor *extractor_;
+  int32 i_;
+};
 
 void IvectorExtractor::ComputeDerivedVariables() {
   KALDI_LOG << "Computing derived variables for iVector extractor";
   const int32 num_gauss = NumGauss();
-  const int32 feat_dim = FeatDim();
   const int32 ivector_dim = IvectorDim();
 
-  gconsts_.Resize(num_gauss);
-  for (int32 i = 0; i < num_gauss; i++) {
-    double var_logdet = -Psi_inv_[i].LogPosDefDet();
-    gconsts_(i) = -0.5 * (var_logdet + feat_dim * M_LOG_2PI);
-  // the gconsts don't contain any weight-related terms.
-  }
   AT_Psi_inv_A_.Resize(num_gauss, ivector_dim * (ivector_dim + 1) / 2);
   Psi_inv_A_.resize(num_gauss);
+  gconsts_.Resize(num_gauss);
 
-  SpMatrix<double> temp_Var(ivector_dim);      // temp_Var = A_i^T Psi_i^{-1} A_i
-  for (int32 i = 0; i < num_gauss; i++) {
-    temp_Var.AddMat2Sp(1.0, A_[i], kTrans, Psi_inv_[i], 0.0);
-    SubVector<double> temp_Var_vec(temp_Var.Data(),
-                                   ivector_dim * (ivector_dim + 1) / 2);
-    AT_Psi_inv_A_.Row(i).CopyFromVec(temp_Var_vec);
-
-    Psi_inv_A_[i].Resize(feat_dim, ivector_dim);
-    Psi_inv_A_[i].AddSpMat(1.0, Psi_inv_[i], A_[i], kNoTrans, 0.0);
+  {
+    TaskSequencerConfig sequencer_opts;
+    sequencer_opts.num_threads = g_num_threads;
+    TaskSequencer<IvectorExtractorComputeDerivedVarsClass> sequencer(
+        sequencer_opts);
+    for (int32 i = 0; i < NumGauss(); i++)
+      sequencer.Run(new IvectorExtractorComputeDerivedVarsClass(this, i));
   }
+  KALDI_LOG << "Done.";
 }
+
+void IvectorExtractor::ComputeDerivedVars(int32 i) {
+
+  double var_logdet = -Psi_inv_[i].LogPosDefDet();
+  gconsts_(i) = -0.5 * (var_logdet + FeatDim() * M_LOG_2PI);
+
+  SpMatrix<double> temp_Var(IvectorDim());
+  // temp_U = M_i^T Sigma_i^{-1} M_i
+  temp_Var.AddMat2Sp(1.0, A_[i], kTrans, Psi_inv_[i], 0.0);
+  SubVector<double> temp_Var_vec(temp_Var.Data(),
+                               IvectorDim() * (IvectorDim() + 1) / 2);
+  AT_Psi_inv_A_.Row(i).CopyFromVec(temp_Var_vec);
+
+  Psi_inv_A_[i].Resize(FeatDim(), IvectorDim());
+  Psi_inv_A_[i].AddSpMat(1.0, Psi_inv_[i], A_[i], kNoTrans, 0.0);
+}
+
 
 void IvectorExtractor::GetIvectorDistribution(const IvectorExtractorUtteranceStats &stats,
                                               VectorBase<double> *mean,
@@ -620,7 +622,7 @@ void IvectorExtractor::GetIvectorDistribution(const IvectorExtractorUtteranceSta
   if (opts_.prior_mode) {
     linear(0) += prior_offset_;
   }
-  quadratic.AddToDiag(1.0);
+  quadratic.AddToDiag(1.0/lambda_);
   quadratic.Invert();
 
   if (var != NULL) {
@@ -636,41 +638,122 @@ void IvectorExtractor::GetIvectorDistribution(const IvectorExtractorUtteranceSta
     (*mean)(0) -= PriorOffset();
   }
 }
+
+BaseFloat IvectorExtractor::LogLikelihood(const VectorBase<BaseFloat> & data, 
+                                          const int32 idx, const VectorBase<double> &ivector) const {
+  Vector<double> x(data);
+  x.AddMatVec(-1.0, A_[idx], kNoTrans, ivector, 1.0);
+  if (!PriorMode()) {
+    SubVector<double> bias(mu_, idx);
+    x.AddVec(-1.0, bias);
+  }
+  return gconsts_(idx) - 0.5 * VecSpVec(x, Psi_inv_[idx], x);
+}
+
+void IvectorExtractor::PostPreselect(const MatrixBase<BaseFloat> &feats, 
+                                     const Posterior &post, 
+                                     Posterior &new_post) const {
+
+  KALDI_ASSERT(new_post.size() == post.size());
+
+  int32 feat_dim = FeatDim();
+  int32 num_gauss = NumGauss();
+  int32 ivector_dim = IvectorDim();
+
+  bool need_2nd_order_stats = false;
+  IvectorExtractorUtteranceStats utt_stats(num_gauss, feat_dim, need_2nd_order_stats);
+  utt_stats.AccStats(feats, post);
+
+  Vector<double> ivector(ivector_dim);
+  GetIvectorDistribution(utt_stats, &ivector);
   
+  Vector<BaseFloat> loglikes;
+  for (int32 t = 0; t < post.size(); t++) {
+    loglikes.Resize(post[t].size());
+    SubVector<BaseFloat> feat(feats, t);
+    for (int32 i = 0; i < post[t].size(); i++) {
+      int32 index = post[t][i].first;
+      loglikes(i) = LogLikelihood(feat, index, ivector);  
+    }
+    loglikes.ApplySoftMax();
+    int32 max_index;
+    loglikes.Max(&max_index);
+    BaseFloat sum = loglikes.Sum();
+    if (sum == 0.0) {
+      loglikes(max_index) = 1.0;
+    } else {
+      loglikes.Scale(1.0 / sum);
+    }
+    for (int32 i = 0; i < loglikes.Dim(); i++) {
+      if (loglikes(i) != 0.0) {
+        new_post[t].push_back(std::make_pair(post[t][i].first, loglikes(i)));
+      }
+    }
+  }
+}
+
+double IvectorExtractor::ComputeAuxfPrior(const SpMatrix<double> & ivec_scatter) const {
+  int32 ivector_dim = IvectorDim();
+  double const_part = -ivector_dim / 2 * (M_LOG_2PI + log(lambda_));
+  double exp_part = - ivec_scatter.Trace() / (2*lambda_);
+  return (const_part + exp_part);
+}
+
+double IvectorExtractor::ComputeAuxfLikelihood(const IvectorExtractorUtteranceStats &utt_stats,
+                                               const VectorBase<double> &ivector,
+                                               const SpMatrix<double> & ivec_scatter,
+                                               const MatrixBase<double> &normalized_gammasup) const {
+
+  int32 num_gauss = NumGauss();
+  int32 ivector_dim = IvectorDim();
+  int32 feat_dim = FeatDim();
+
+  double sum_gamma_logDet = 0;
+  double sum_exponent_part = 0;
+  Matrix<double> AY(feat_dim, feat_dim);
+  Matrix<double> AYYA(feat_dim, feat_dim);
+  Matrix<double> tmp_AY_mat(feat_dim, ivector_dim);
+  SpMatrix<double> tmp_mat(feat_dim);
+  Matrix<double> tmp_prod(feat_dim, feat_dim);
+     
+  for (int32 i = 0; i < num_gauss; i++) {
+    sum_gamma_logDet += utt_stats.gamma_(i) * GetPsiLogDet(i);
+    
+    tmp_AY_mat.SetZero();
+    tmp_AY_mat.AddVecVec(1.0, normalized_gammasup.Row(i), ivector);   // gamma * (x_{it}-\mu_k) * z_i^T
+    AY.AddMatMat(-1.0, A_[i], kNoTrans, tmp_AY_mat, kTrans, 0.0);   // = - gamma * A * z_i * (x_{it}-\mu_k)^T
+    AYYA.CopyFromMat(AY, kTrans);   // = - gamma * (x_{it}-\mu_k) * (A * z_i) ^ T
+    AYYA.AddMat(1.0, AY);           // = - gamma * (x_{it}-\mu_k) * (A * z_i) ^ T - gamma * A * z_i * (x_{it}-\mu_k)^T
+
+    AYYA.AddSp(1.0, utt_stats.S_[i]);   // = + gamma * (x_{it}-\mu_k) * (x_{it}-\mu_k) ^ T
+    if (!PriorMode()) {
+      AYYA.AddVecVec(-1.0, mu_.Row(i), utt_stats.X_.Row(i));
+      AYYA.AddVecVec(-1.0, normalized_gammasup.Row(i), mu_.Row(i));
+    }
+
+    tmp_mat.CopyFromMat(AYYA);
+    tmp_mat.AddMat2Sp(utt_stats.gamma_(i), A_[i], kNoTrans, ivec_scatter, 1.0);
+
+    tmp_prod.AddSpSp(1.0, tmp_mat, Psi_inv_[i], 0.0);
+    sum_exponent_part += tmp_prod.Trace();
+  }
+
+  double auxf_llk = - utt_stats.gamma_.Sum() / 2 * M_LOG_2PI - sum_gamma_logDet / 2 - sum_exponent_part / 2;
+  return auxf_llk;
+}
+
 double IvectorExtractor::ComputeAuxf(const IvectorExtractorUtteranceStats &stats,
                                      const VectorBase<double> &ivector,
                                      const SpMatrix<double> &ivec_var,
                                      const MatrixBase<double> &normalized_gammasup) const {
-  double log_det = 0;
-  const int32 ivector_dim = IvectorDim();
-  const int32 feat_dim = FeatDim();
 
   SpMatrix<double> ivec_scatter(ivec_var);
   ivec_scatter.AddVec2(1.0, ivector);       // ivector^2 + ivec_var
 
-  Matrix<double> final_mat(feat_dim, feat_dim);
-  Matrix<double> gammasup_iV(feat_dim, ivector_dim);
-  Matrix<double> tmp_acc_mat(feat_dim, feat_dim);
-  SpMatrix<double> tmp_acc_mat_sp(tmp_acc_mat);
+  double auxf1 = ComputeAuxfPrior(ivec_scatter);
+  double auxf2 = ComputeAuxfLikelihood(stats, ivector, ivec_scatter, normalized_gammasup);
 
-  double trace = 0;
-  for (int32 i = 0; i < NumGauss(); i++) {
-    if (stats.gamma_(i) == 0)
-      continue;
-    log_det -= Psi_inv_[i].LogDet();
-    log_det -= FeatDim() * log(stats.gamma_(i));
-
-    gammasup_iV.SetZero();
-    gammasup_iV.AddVecVec(1.0, normalized_gammasup.Row(i), ivector);                // gamma * (x-mu) * ivec^T
-    tmp_acc_mat.AddMatMat(-2.0, gammasup_iV, kNoTrans, A_[i], kTrans, 0.0);         // -2 * gamma * (x-mu) * ivec^T * A^T
-    tmp_acc_mat_sp.CopyFromMat(tmp_acc_mat);
-    tmp_acc_mat_sp.AddVec2(1 / stats.gamma_(i), normalized_gammasup.Row(i));      // -2 * gamma * (x-mu) * ivec^T * A^T + gamma * (x-mu) * (x-mu)^T
-    tmp_acc_mat_sp.AddMat2Sp(stats.gamma_(i), A_[i], kNoTrans, ivec_scatter, 1.0);  // -2 * gamma * (x-mu) * ivec^T * A^T + gamma * (x-mu) * (x-mu)^T + gamma * A * E(ivec*ivec^T) * A^T
-    final_mat.AddSpSp(1.0, tmp_acc_mat_sp, Psi_inv_[i], 0.0);       // ((x-mu) * (x-mu)^T - 2 * (x-mu) * ivec^T * A^T + A * E(ivec*ivec^T) * A^T) * gamma * Psi^{-1}
-    trace += final_mat.Trace();
-  }
-  double auxf = -1/2 * (log_det + trace + ivec_scatter.Trace());
-  return auxf;
+  return auxf1 + auxf2;
 }
 
 void IvectorExtractor::TransformIvectors(const MatrixBase< double > & T) {
@@ -683,6 +766,8 @@ void IvectorExtractor::TransformIvectors(const MatrixBase< double > & T) {
 void IvectorExtractor::Write(std::ostream &os, bool binary, const bool write_derived /* = false */) const {
   WriteToken(os, binary, "<IvectorExtractor3>");
   opts_.Write(os, binary);
+  WriteToken(os, binary, "<lambda>");
+  WriteBasicType(os, binary, lambda_);
   WriteToken(os, binary, "<mu>");
   mu_.Write(os, binary);
   WriteToken(os, binary, "<w_vec>");
@@ -704,6 +789,13 @@ void IvectorExtractor::Write(std::ostream &os, bool binary, const bool write_der
 void IvectorExtractor::Read(std::istream &is, bool binary, const bool read_derived /* = false */) {
   ExpectToken(is, binary, "<IvectorExtractor3>");
   opts_.Read(is, binary);
+  int token = PeekToken(is, binary);
+  if (token == 'l') {
+    ExpectToken(is, binary, "<lambda>");
+    ReadBasicType(is, binary, &lambda_);
+  } else {
+    lambda_ = 1.0;
+  }
   ExpectToken(is, binary, "<mu>");
   mu_.Read(is, binary);
   int32 num_gauss = mu_.NumRows();
@@ -751,6 +843,14 @@ std::string IvectorExtractor::Info() const {
   ostr << "ivector-dim " << IvectorDim() << std::endl;
   ostr << "number-of-parameters " << static_cast<float>(NumParams())/1e6
        << " millions" << std::endl;
+  ostr << "prior mode? " << PriorMode() << std::endl;
+  if (PriorMode())
+    ostr << "prior-offset " << prior_offset_ << std::endl;
+  else
+    ostr << "mu_" << MomentStatistics(mu_) << std::endl;
+
+  ostr << "lambda " << lambda_ << std::endl;
+
   // topology & weight stats
   Matrix<double> A_mat(SupervectorDim(), IvectorDim());
   Vector<double> Psi_vec(SupervectorDim());

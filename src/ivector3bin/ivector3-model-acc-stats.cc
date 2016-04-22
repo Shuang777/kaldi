@@ -23,6 +23,38 @@
 #include "util/common-utils.h"
 #include "gmm/am-diag-gmm.h"
 #include "ivector3/ivector-extractor.h"
+#include "thread/kaldi-task-sequence.h"
+
+namespace kaldi {
+
+using namespace kaldi::ivector3;
+// this class is used to run the command
+//  stats.AccStatsForUtterance(extractor, mat, posterior);
+// in parallel.
+class IvectorTask {
+ public:
+  IvectorTask(const IvectorExtractor &extractor,
+              const Matrix<BaseFloat> &features,
+              const Posterior &posterior,
+              IvectorExtractorStats *stats): extractor_(extractor),
+                                    features_(features),
+                                    posterior_(posterior),
+                                    stats_(stats) {}
+
+  void operator () () {
+    stats_->AccStatsForUtterance(extractor_, features_, posterior_);
+  }
+  ~IvectorTask() { }  // the destructor doesn't have to do anything.
+ private:
+  const IvectorExtractor &extractor_;
+  Matrix<BaseFloat> features_; // not a reference, since features come from a
+                               // Table and the reference we get from that is
+                               // not valid long-term.
+  Posterior posterior_;  // as above.
+  IvectorExtractorStats *stats_;
+};
+
+}
 
 int main(int argc, char *argv[]) {
   using namespace kaldi;
@@ -43,6 +75,8 @@ int main(int argc, char *argv[]) {
     ParseOptions po(usage);
     bool binary = true;
     po.Register("binary", &binary, "Write output in binary mode");
+    TaskSequencerConfig sequencer_opts;
+    sequencer_opts.Register(&po);
 
     po.Read(argc, argv);
     
@@ -67,31 +101,42 @@ int main(int argc, char *argv[]) {
     IvectorExtractor extractor;
     ReadKaldiObject(ivector_extractor_rxfilename, &extractor);
     
+    g_num_threads = sequencer_opts.num_threads;
     
-    int32 num_done = 0, num_err = 0;
     
     IvectorExtractorStats stats(extractor);
 
-    for (; !feature_reader.Done(); feature_reader.Next()) {
-      std::string key = feature_reader.Key();
-      if (!posteriors_reader.HasKey(key)) {
-        KALDI_WARN << "No posteriors for utterance " << key;
-        num_err++;
-        continue;
-      }
-      const Matrix<BaseFloat> &mat = feature_reader.Value();
-      const Posterior &posterior = posteriors_reader.Value(key);
+    int64 tot_t = 0;
+    int32 num_done = 0, num_err = 0;
+    
+    {
+      TaskSequencer<IvectorTask> sequencer(sequencer_opts);
+      
+      for (; !feature_reader.Done(); feature_reader.Next()) {
+        std::string key = feature_reader.Key();
+        if (!posteriors_reader.HasKey(key)) {
+          KALDI_WARN << "No posteriors for utterance " << key;
+          num_err++;
+          continue;
+        }
+        const Matrix<BaseFloat> &mat = feature_reader.Value();
+        const Posterior &posterior = posteriors_reader.Value(key);
 
-      if (static_cast<int32>(posterior.size()) != mat.NumRows()) {
-        KALDI_WARN << "Size mismatch between posterior " << (posterior.size())
-                   << " and features " << (mat.NumRows()) << " for utterance "
-                   << key;
-        num_err++;
-        continue;
-      }
+        if (static_cast<int32>(posterior.size()) != mat.NumRows()) {
+          KALDI_WARN << "Size mismatch between posterior " << (posterior.size())
+                     << " and features " << (mat.NumRows()) << " for utterance "
+                     << key;
+          num_err++;
+          continue;
+        }
 
-      stats.AccStatsForUtterance(extractor, mat, posterior);
-      num_done++;
+        sequencer.Run(new IvectorTask(extractor, mat, posterior, &stats));
+
+        tot_t += posterior.size();
+        num_done++;
+      }
+      // destructor of "sequencer" will wait for any remaining tasks that
+      // have not yet completed.
     }
     
     KALDI_LOG << "Done " << num_done << " files.";

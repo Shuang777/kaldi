@@ -27,6 +27,7 @@
 #include "itf/options-itf.h"
 #include "util/common-utils.h"
 #include "hmm/posterior.h"
+#include "thread/kaldi-mutex.h"
 
 namespace kaldi {
 namespace ivector3{
@@ -82,8 +83,10 @@ struct IvectorExtractorEstimationOptions {
   double gaussian_min_count; 
   bool diagonalize;
   int32 num_threads;
+  bool update_weights;
   IvectorExtractorEstimationOptions(): update_variance(true), variance_floor_factor(0.1), 
-         floor_iv2(false), update_prior(false), gaussian_min_count(100.0), diagonalize(true) { }
+         floor_iv2(false), update_prior(false), gaussian_min_count(100.0), diagonalize(true),
+         update_weights(false) { }
   void Register(OptionsItf *po) {
     po->Register("update-variance", &update_variance, "Update variance of noise term");
     po->Register("diagonalize", &diagonalize, "diagonalizes the quadratic term.");
@@ -91,8 +94,9 @@ struct IvectorExtractorEstimationOptions {
     po->Register("floor-iv2", &floor_iv2, "Floor the matrix for transformation estimation");
     po->Register("update-prior", & update_prior, "Update transformation matrix like is done in Kaldi default update prior function");
     po->Register("gaussian-min-count", &gaussian_min_count,
-                   "Minimum total count per Gaussian, below which we refuse to "
-                   "update any associated parameters.");
+                 "Minimum total count per Gaussian, below which we refuse to "
+                 "update any associated parameters.");
+    po->Register("Update-weights", &update_weights, "Update mixture weights during training");
   }
 };
 
@@ -136,6 +140,10 @@ class IvectorExtractorStats {
   SpMatrix<double> iV_iV_;
   Vector<double> gamma_;
   double num_ivectors_;
+  
+  Mutex gamma_iV_lock_;
+  Mutex gamm_supV_iV_lock_;
+  Mutex gamma_supV_supV_lock_;
 };
 
 class IvectorExtractor {
@@ -146,7 +154,8 @@ class IvectorExtractor {
 
   IvectorExtractor(const IvectorExtractorOptions &opts, const IvectorExtractorUtteranceStats &stats);
 
-  IvectorExtractor(const IvectorExtractorOptions &opts, const FullGmm &fgmm);
+  IvectorExtractor(const IvectorExtractorOptions &opts, const FullGmm &fgmm, 
+                   const double lambda = 1.0, const bool compute_derived = true);
 
   int32 FeatDim() const {  return A_.front().NumRows(); }
 
@@ -164,12 +173,20 @@ class IvectorExtractor {
                               SpMatrix< double > *var = NULL, MatrixBase<double> * normalized_gammasup = NULL, 
                               double *auxf = NULL, bool for_scoring = false) const;
 
+  double ComputeAuxfPrior(const SpMatrix<double> & ivec_scatter) const;
+
+  double ComputeAuxfLikelihood(const IvectorExtractorUtteranceStats &utt_stats,
+                               const VectorBase<double> &ivector, const SpMatrix<double> & ivec_scatter,
+                               const MatrixBase<double> &normalized_gammasup) const;
+
   double ComputeAuxf(const IvectorExtractorUtteranceStats &stats, const VectorBase<double> &mean,
                      const SpMatrix<double> &quadratic, const MatrixBase<double> &normalized_gammasup) const;
 
   void TransformIvectors(const MatrixBase< double > & T);
 
   void ComputeDerivedVariables();
+
+  void ComputeDerivedVars(int32 i);
 
   void SetPriorOffset(double new_prior_offset) { prior_offset_ = new_prior_offset; }
 
@@ -183,6 +200,13 @@ class IvectorExtractor {
 
   double GetPsiLogDet(int32 k) const { return -Psi_inv_[k].LogDet(); }
 
+  BaseFloat LogLikelihood(const VectorBase<BaseFloat> & data,
+                          const int32 idx, const VectorBase<double> &ivector) const;
+
+  void PostPreselect(const MatrixBase<BaseFloat> &feats,
+                     const Posterior &post,
+                     Posterior &new_post) const;
+
 private:
   IvectorExtractorOptions opts_;
 
@@ -190,14 +214,15 @@ private:
   Matrix<double> mu_;
   double prior_offset_;
 
-  Vector<double>  gconsts_;
-
   std::vector<Matrix<double> > A_;
   std::vector<SpMatrix<double> > Psi_inv_;
 
+  double lambda_;
+
   // derived values
   std::vector<Matrix<double> > Psi_inv_A_;
-  Matrix<double> AT_Psi_inv_A_;     // each row is the covariance mat of a component
+  Matrix<double> AT_Psi_inv_A_;     // each row is the covariance mat of a component  
+  Vector<double> gconsts_;
 };
 
 

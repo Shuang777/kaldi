@@ -40,6 +40,8 @@ int main(int argc, char *argv[]) {
     IvectorExtractorOptions ivector_opts;
     ParseOptions po(usage);
     po.Register("binary", &binary, "Write output in binary mode");
+    double lambda = 1.0;
+    po.Register("lambda", &lambda, "lambda for ivector regularization");
     ivector_opts.Register(&po);
 
     po.Read(argc, argv);
@@ -49,14 +51,14 @@ int main(int argc, char *argv[]) {
       exit(1);
     }
 
-
     std::string fgmm_rxfilename = po.GetArg(1),
         ivector_model_wxfilename = po.GetArg(2);
         
     FullGmm fgmm;
     ReadKaldiObject(fgmm_rxfilename, &fgmm);
 
-    IvectorExtractor extractor(ivector_opts, fgmm);
+    bool compute_derived = false;
+    IvectorExtractor extractor(ivector_opts, fgmm, lambda, compute_derived);
 
     WriteKaldiObject(extractor, ivector_model_wxfilename, binary);
 

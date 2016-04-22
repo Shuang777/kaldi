@@ -31,8 +31,7 @@ int main(int argc, char *argv[]) {
   try {
     const char *usage =
         "Copy stats for diagnosis\n"
-        "Usage:  ivector3-model-stats-copy [options] <stats-in> <stats-out>"
-        "<feature-rspecifier> <stats-out>\n"
+        "Usage:  ivector3-model-stats-copy [options] <stats-in> <stats-out>\n"
         "e.g.: \n"
         "  ivector3-model-stats-copy 1.acc 1.bin.acc\n";
 
@@ -52,11 +51,7 @@ int main(int argc, char *argv[]) {
 
     IvectorExtractorStats stats;
 
-    {
-      bool binary_in;
-      Input ki(stats_rxfilename, &binary_in);
-      stats.Read(ki.Stream(), binary);
-    }
+    ReadKaldiObject(stats_rxfilename, &stats);
 
     WriteKaldiObject(stats, stats_wxfilename, binary);
     
