@@ -141,6 +141,7 @@
 /src/bin/concatenate-posts
 /src/bin/select-posts
 /src/bin/filter-posts
+/src/bin/filter-lats
 
 # /src/cudamatrix/
 /src/cudamatrix/.depend.mk

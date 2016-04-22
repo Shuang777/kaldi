@@ -23,7 +23,7 @@ BINFILES = align-equal align-equal-compiled acc-tree-stats \
         build-pfile-from-ali get-post-on-ali tree-info am-info \
         vector-sum matrix-sum-rows est-pca sum-lda-accs sum-mllt-accs \
         transform-vec align-text matrix-entropy-rows matrix-div-cols-sum \
-				concatenate-posts select-posts filter-posts
+				concatenate-posts select-posts filter-posts filter-lats
 
 
 OBJFILES =
