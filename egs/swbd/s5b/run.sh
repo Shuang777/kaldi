@@ -393,3 +393,5 @@ done
 # # getting results (see RESULTS file)
 # for x in 1 2 3a 3b 4a; do grep 'Percent Total Error' exp/tri$x/decode_eval2000_sw1_tg/score_*/eval2000.ctm.filt.dtl | sort -k5 -g | head -1; done
 
+# launch MPI nnet training
+salloc -N4 -n8 --ntasks-per-node=2 --gres=gpu:2 mysteps/train_nnet.sh --mpi-jobs 8 --reduce-type allreduce --precondition online --feature-transform exp/dnn5b_pretrain-dbn/final.feature_transform --dbn exp/dnn5b_pretrain-dbn/6.dbn --hid-layers 0 --learn-rate 2.56 --resume-anneal false --train-opts '--minibatch-size 1024' data/train_nodup exp/tri4b_ali_nodup exp/dnn5b_pretrain-dbn_dnn_online_mpi8_mb1024_lr2.56
